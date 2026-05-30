@@ -1,0 +1,58 @@
+# ==========================================
+# 1. GLOBAL / SYSTEM / IDE CONFIGURATIONS
+# ==========================================
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# IDE Project settings
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Global Development Tools
+.pre-commit/
+.cache/
+
+# ==========================================
+# 2. FRONTEND (TypeScript / Vite / Node)
+# ==========================================
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# Frontend Execution Logs
+frontend/logs/
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/lerna-debug.log*
+
+# ==========================================
+# 3. BACKEND (Python / uv / FastAPI)
+# ==========================================
+# Python Virtual Environments
+backend/.venv/
+backend/venv/
+backend/env/
+
+# Python Bytecode and Cache Directories
+backend/__pycache__/
+backend/**/*.py[cod]
+backend/*$py.class
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.mypy_cache/
+
+# Backend Environment & Secret Files
+backend/.env
+backend/*.env.local

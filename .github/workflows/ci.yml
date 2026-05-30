@@ -1,0 +1,75 @@
+# .github/workflows/ci.yml
+name: Code Quality & Testing (CI)
+
+on:
+  push:
+    branches: [ main, frontend, backend ] # Run on pushes to main and any feature branches
+  pull_request:
+    branches: [ main, frontend, backend ] # Run on PRs targeting main and any feature branches
+
+jobs:
+  lint-and-format:
+    name: Lint & Format Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # --- PYTHON BACKEND CHECKS ---
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      # Run Ruff Linter and Formatter via uv (No python installation required!)
+      - name: Run Python Lint (Ruff)
+        run: uv run ruff check backend/
+
+      - name: Run Python Format Check (Ruff)
+        run: uv run ruff format --check backend/
+
+      # --- TYPESCRIPT FRONTEND CHECKS ---
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-json.lock # Speeds up future runs
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      # Verifies Prettier style guidelines are met without changing files
+      - name: Run Frontend Format Check (Prettier)
+        run: |
+          cd frontend
+          npx prettier --check .
+
+      # Catches TypeScript structural bugs
+      - name: Run Frontend Lint (ESLint)
+        run: |
+          cd frontend
+          npx eslint src/
+
+  test-backend:
+    name: Run Pytest Suite
+    needs: lint-and-format # Only runs tests if the code is clean!
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Run Tests
+        run: |
+          cd backend
+          uv run pytest
