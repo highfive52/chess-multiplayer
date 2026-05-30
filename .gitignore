@@ -3,56 +3,35 @@
 # ==========================================
 .DS_Store
 Thumbs.db
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# IDE Project settings
+.idea/
 .vscode/*
 !.vscode/extensions.json
-.idea/
-*.sublime-project
-*.sublime-workspace
-
-# Global Development Tools
-.pre-commit/
 .cache/
 
 # ==========================================
-# 2. FRONTEND (TypeScript / Vite / Node)
+# 2. NODE / FRONTEND ECOSYSTEM (Global Match)
 # ==========================================
-frontend/node_modules/
-frontend/dist/
-frontend/dist-ssr/
-frontend/*.local
-
-# Frontend Execution Logs
-frontend/logs/
-frontend/*.log
-frontend/npm-debug.log*
-frontend/yarn-debug.log*
-frontend/yarn-error.log*
-frontend/pnpm-debug.log*
-frontend/lerna-debug.log*
+node_modules/
+dist/
+dist-ssr/
+*.log
+.eslintcache
 
 # ==========================================
-# 3. BACKEND (Python / uv / FastAPI)
+# 3. PYTHON / BACKEND ECOSYSTEM (Global Match)
 # ==========================================
-# Python Virtual Environments
-backend/.venv/
-backend/venv/
-backend/env/
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
-# Python Bytecode and Cache Directories
-backend/__pycache__/
-backend/**/*.py[cod]
-backend/*$py.class
-backend/.pytest_cache/
-backend/.ruff_cache/
-backend/.mypy_cache/
-
-# Backend Environment & Secret Files
-backend/.env
-backend/*.env.local
+# ==========================================
+# 4. ENVIRONMENT / SECRETS (Crucial Safety)
+# ==========================================
+.env
+*.env.local
+.env.*
