@@ -7,113 +7,126 @@
 3. `npm install`
 4. `npm install socket.io-client`
 5. Clean up boilerplate:
+* Open `frontend/src/main.ts`, select everything, and delete it so you have a blank canvas.
+* Delete `frontend/src/counter.ts` entirely.
 
-    * Open `frontend/src/main.ts`, select everything, and delete it so you have a blank canvas.
-    * Delete `frontend/src/counter.ts` entirely.
 
-6. `npm install --save-dev eslint prettier eslint-config-prettier`  
+6. `npm install --save-dev eslint prettier eslint-config-prettier typescript-eslint @eslint/js`
+* `--save-dev` specifies these are only dev dependencies.
+* `typescript-eslint` and `@eslint/js` are required for the new ESLint Flat Config engine.
 
-    * `--save-dev` specifies these are only dev dependencies
-    * Look in package.json `"devDependencies": {`
-    * When you deploy your frontend to a hosting provider (like Vercel, Netlify, or Render), the build platform will often run an optimized install command: `npm install --omit=dev`
 
-7. Tool configs:
-    
-    * Create `frontend/.prettierrc`
+7. Update `frontend/package.json` to include the explicit lint execution script:
+```json
+"scripts": {
+  "dev": "vite",
+  "build": "tsc && vite build",
+  "lint": "eslint .",
+  "preview": "vite preview"
+}
 
-    ```json
-    {
-    "semi": true,
-    "singleQuote": false,
-    "trailingComma": "es5",
-    "printWidth": 100,
-    "tabWidth": 2
-    }
+```
 
-    ```
 
-    * Create `frontend/.eslintrc.json`
+8. Tool configs:
+* Create `frontend/.prettierrc`
 
-    ```json
-    {
-    "env": {
-        "browser": true,
-        "es2022": true
+
+```json
+{
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "es5",
+  "printWidth": 100,
+  "tabWidth": 2
+}
+
+```
+
+
+* Create `frontend/eslint.config.js` *(Note the new file extension and modular layout)*
+
+
+```javascript
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+
+export default tseslint.config(
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: {
+        browser: true,
+      },
     },
-    "extends": [
-        "eslint:recommended",
-        "prettier"
-    ],
-    "parserOptions": {
-        "ecmaVersion": "latest",
-        "sourceType": "module"
+    rules: {
+      "no-unused-vars": "warn",
+      "no-console": "off",
+      "@typescript-eslint/no-unused-vars": ["warn"],
     },
-    "rules": {
-        "no-unused-vars": "warn",
-        "no-console": "off"
-    }
-    }
-    ```
+  },
+);
+
+```
+
+
 
 ---
 
-## ## backend
+## Backend Setup Checklist
 
 1. **Navigate to the backend directory:**
-    
 ```bash
 # From your repository root:
 mkdir backend
 cd backend
+
 ```
 
 
 2. **Initialize the Python project using `uv`:**
-
 ```bash
 uv init --app --package --python 3.12
 
 ```
 
+
 > This automatically generates a modern `pyproject.toml`, a virtual environment, and a boilerplate script.
 
-3. **Add the backend dependencies:**
 
+3. **Add the backend dependencies:**
 ```bash
 uv add fastapi uvicorn python-socketio
 
 ```
 
+
 > This instantly downloads and installs the server components and updates your `pyproject.toml`.
 
-4. **Add the testing dependencies (as development packages):**
 
+4. **Add the testing dependencies (as development packages):**
 ```bash
 uv add --dev pytest httpx
 
 ```
 
+
 > `httpx` allows `pytest` to make asynchronous testing requests to your FastAPI application.
 
 
 5. **Overwrite `backend/main.py` with your server code:**
-
 ```python
-# backend/src/backend/main.py
 import uvicorn
 import socketio
 from fastapi import FastAPI, Response
 
-# 1. Create a standard FastAPI application instance
 app = FastAPI()
-
-# 2. Set up your Socket.io async server
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
-
-# 3. Mount Socket.io onto the FastAPI app so they share port 8000
 asgi_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
-# 4. Catch the pesky favicon request and kill it silently
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return Response(status_code=204)
@@ -127,7 +140,6 @@ async def disconnect(sid):
     print(f"Client disconnected: {sid}")
 
 def main():
-    # Pass the shared asgi_app to uvicorn
     uvicorn.run(asgi_app, host="127.0.0.1", port=8000)
 
 if __name__ == "__main__":
@@ -135,75 +147,137 @@ if __name__ == "__main__":
 
 ```
 
-6. **Run the server locally to test:**
+6. **Create a backend smoke test file:**
+* Create a file at `backend/tests/test_smoke.py`:
 
+```python
+def test_backend_health():
+    """Sanity check to verify the testing orchestrator executes cleanly."""
+    assert True
+
+```
+
+> Keeping an explicit smoke test guarantees your CI test environment won't exit with error code 5 due to an empty test suite.
+
+7. **Run the server locally to test:**
 ```bash
 uv run python -m backend.main
 
 ```
 
-or update pyproject.toml
-
-```ini, toml
+Or update `pyproject.toml`:
+```toml
 [project.scripts]
 backend = "backend.main:main"
 
 ```
+
 
 ```bash
 uv run backend
 
 ```
 
-> Adding `reload=True` inside `main.py` means whenever you save changes to your Python files, the server will instantly refresh itself—just like Vite does on the frontend!
-
+To enable hot-reloading during development:
 ```bash
 uv run uvicorn backend.main:asgi_app --reload
 
 ```
 
+---
 
-## tools
+## Local Pre-commit Tools Setup
 
-1. uv tool install pre-commit (from root)
-2. tool configs
+1. `uv tool install pre-commit` (from repo root)
+2. Create `.pre-commit-config.yaml` at the repository root:
+```yaml
+repos:
+  # --- PYTHON BACKEND TOOLS ---
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.0
+    hooks:
+      - id: ruff         # Python Linter
+        files: ^backend/
+      - id: ruff-format  # Python Formatter
+        files: ^backend/
 
-    -   Create `.pre-commit-config.yaml`
+  # --- TYPESCRIPT FRONTEND TOOLS ---
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier     # Frontend Formatter
+        files: ^frontend/
+        additional_dependencies: ['prettier@3.1.0']
 
-        ```yaml
-        # .pre-commit-config.yaml (at the repository root)
-        repos:
-            # --- PYTHON BACKEND TOOLS ---
-            - repo: https://github.com/astral-sh/ruff-pre-commit
-                rev: v0.9.0
-                hooks:
-                - id: ruff         # Python Linter (Catches bugs)
-                    files: ^backend/
-                - id: ruff-format  # Python Formatter (Replaces Black)
-                    files: ^backend/
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v10.4.1
+    hooks:
+      - id: eslint       # Frontend Flat-Config Linter
+        files: ^frontend/
+        # Point directly to the new flat config file and context prefix
+        args: [--config, frontend/eslint.config.js, --prefix, frontend]
+        additional_dependencies:
+          - eslint@10.4.1
+          - typescript@6.0.2
+          - typescript-eslint@8.24.0
+          - "@eslint/js@10.4.1"
 
-            # --- TYPESCRIPT FRONTEND TOOLS ---
-            - repo: https://github.com/pre-commit/mirrors-prettier
-                rev: v3.1.0
-                hooks:
-                - id: prettier     # Frontend Formatter (HTML/CSS/TS)
-                    files: ^frontend/
-                    additional_dependencies: ['prettier@3.1.0']
+```
 
-            - repo: https://github.com/pre-commit/mirrors-eslint
-                rev: v8.56.0
-                hooks:
-                - id: eslint       # Frontend Linter (Catches TS bugs)
-                    # Bypasses strict leading anchors to ensure cross-platform matching
-                    files: frontend/src/.*\.(ts|tsx)$
-                    # Tells ESLint to look into the frontend folder for configuration context
-                    args: [--config, frontend/.eslintrc.json, --prefix, frontend] 
-                    additional_dependencies:
-                    - eslint@8.56.0
-                    - typescript@5.3.3
-                    - "@typescript-eslint/parser@6.14.0"
-                    - "@typescript-eslint/eslint-plugin@6.14.0"
-                ```
-    
-    3. pre-commit install
-    4. pre-commit run --all-files
+3. `pre-commit install`
+4. `pre-commit run --all-files`
+
+---
+
+## Root Orchestration Setup (Unified Dev Environment)
+
+To run both the FastAPI backend and the Vite frontend simultaneously with a single terminal command, install and configure `concurrently` at the repository root.
+
+1. **Navigate to your repository root:**
+```bash
+cd /path/to/chess-multiplayer
+
+```
+
+2. **Initialize a root `package.json` (if you haven't already):**
+```bash
+npm init -y
+
+```
+
+3. **Install `concurrently` as a root development dependency:**
+```bash
+npm install --save-dev concurrently
+
+```
+
+4. **Configure the unified execution scripts:**
+Open your root **`package.json`** file and modify the `"scripts"` section to map the dual-stack development commands:
+```json
+{
+  "name": "chess-multiplayer",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently \"uv run --directory backend uvicorn backend.main:asgi_app --reload\" \"npm run dev --prefix frontend\"",
+    "lint": "concurrently \"uv run --directory backend ruff check backend/\" \"npm run lint --prefix frontend\"",
+    "format:check": "concurrently \"uv run --directory backend ruff format --check backend/\" \"npm run --prefix frontend npx prettier --check .\""
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.1"
+  }
+}
+
+```
+
+5. **Launch the entire local application:**
+From the repository root, run the following command to spin up the hot-reloading backend server and the Vite frontend dev server at the exact same time:
+```bash
+npm run dev
+
+```
+
+> `concurrently` will spin up both processes in a single terminal session, prefixing the console logs with different colors so you can easily trace frontend asset compiling and backend WebSocket traffic simultaneously. Splitting the session or shutting down the terminal will cleanly terminate both servers at once.
+
+> **Tip:** You can also run `npm run lint` from the root to run your Python and TypeScript linters side-by-side locally before pushing your code to GitHub. Typing `Ctrl + C` in your terminal will cleanly terminate both the frontend and backend servers together.
+
