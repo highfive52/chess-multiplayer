@@ -50,11 +50,9 @@ jobs:
           cd frontend
           npx prettier --check .
 
-      # Catches TypeScript structural bugs
+      # Catches TypeScript structural bugs natively via the frontend workspace script
       - name: Run Frontend Lint (ESLint)
-        run: |
-          cd frontend
-          npx eslint .
+        run: npm run lint --prefix frontend
 
   test-backend:
     name: Run Pytest Suite
