@@ -1,3 +1,39 @@
+/* --- APP CORE WRAPPERS --- */
+#app-container {
+  width: 100%;
+  max-width: 600px;
+}
+
+/* --- HEADS UP DISPLAY (HUD) --- */
+#match-hud {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px;
+  margin-bottom: 12px;
+  background-color: #6b6b6b;
+  color: #ffffff;
+  border-radius: 4px;
+  font-weight: bold;
+  border: 1px solid #313131;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.hud-item span {
+  transition: color 0.3s ease;
+}
+
+/* --- BOARD CONNECTING LOADER --- */
+#board-loader {
+  color: #6b7280;
+  font-weight: bold;
+  font-size: 1.2rem;
+  margin: auto;
+  grid-column: span 8;
+  grid-row: span 8;
+  text-align: center;
+  align-self: center;
+}
+
 :root {
   --color-light: #f0d9b5;
   --color-dark: #b58863;

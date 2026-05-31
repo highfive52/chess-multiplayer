@@ -46,6 +46,18 @@ GAME_STATE = {
             {"type": "r", "color": "b"},
         ],
     ],
+    "castling_rights": {
+        "w": {
+            "king_has_moved": False,
+            "a_rook_has_moved": False,
+            "h_rook_has_moved": False,
+        },
+        "b": {
+            "king_has_moved": False,
+            "a_rook_has_moved": False,
+            "h_rook_has_moved": False,
+        },
+    },
 }
 
 
@@ -146,10 +158,12 @@ async def handle_propose_move(sid, data):
     f_row, f_col = move_from["row"], move_from["col"]
     t_row, t_col = move_to["row"], move_to["col"]
 
-    # 💡 NEW - TRACK 3: GEOMETRIC RULES ENGINE VALIDATION
-    if not is_legal_move(GAME_STATE["board"], f_row, f_col, t_row, t_col):
+    # TRACK 3: GEOMETRIC RULES ENGINE VALIDATION
+    if not is_legal_move(
+        GAME_STATE["board"], f_row, f_col, t_row, t_col, GAME_STATE["castling_rights"]
+    ):
         print(
-            f"[REJECTED] Geometric Rule Violation from [{f_row}][{f_col}] to [{t_row}][t_col]"
+            f"[REJECTED] Geometric Rule Violation from [{f_row}][{f_col}] to [{t_row}][{t_col}]"
         )
         await sio.emit("move_rejected", {"reason": "Illegal chess movement"}, to=sid)
         return
@@ -157,6 +171,34 @@ async def handle_propose_move(sid, data):
     # 3. Authoritative Python State Mutation (Only runs if validator returned True)
     moving_piece = GAME_STATE["board"][f_row][f_col]
     if moving_piece:
+        p_type = moving_piece["type"]
+        p_color = moving_piece["color"]
+
+        # CHECK FOR SPECIAL ORCHESTRATION: King Castling Slide
+        if p_type == "k" and abs(t_col - f_col) == 2:
+            home_rank = 0 if p_color == "w" else 7
+            is_kingside = t_col > f_col
+
+            # Identify source and destination of the castling Rook
+            old_rook_col = 7 if is_kingside else 0
+            new_rook_col = 5 if is_kingside else 3
+
+            # Snap-move the Rook programmatically
+            rook_piece = GAME_STATE["board"][home_rank][old_rook_col]
+            GAME_STATE["board"][home_rank][new_rook_col] = rook_piece
+            GAME_STATE["board"][home_rank][old_rook_col] = None
+
+        # UPDATE HISTORICAL CASTLING RIGHTS ON ANY RELEVANT PIECE MOVE
+        rights = GAME_STATE["castling_rights"][p_color]
+        if p_type == "k":
+            rights["king_has_moved"] = True
+        elif p_type == "r":
+            if f_col == 0:
+                rights["a_rook_has_moved"] = True
+            elif f_col == 7:
+                rights["h_rook_has_moved"] = True
+
+        # Standard physical position update for the primary moving piece
         GAME_STATE["board"][t_row][t_col] = moving_piece
         GAME_STATE["board"][f_row][f_col] = None
 
