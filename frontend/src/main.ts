@@ -77,7 +77,11 @@ socket.on(
 // ONE AUTHORITATIVE SNAPSHOT LISTENER (Duplicates Cleaned Out)
 socket.on(
   "move_executed",
-  (payload: { board: BoardMatrix; current_turn: string; last_move: any }) => {
+  (payload: {
+    board: BoardMatrix;
+    current_turn: string;
+    last_move: { from: { row: number; col: number }; to: { row: number; col: number } } | null;
+  }) => {
     console.log("📥 Authoritative state snapshot arrived from server!");
 
     // 1. Overwrite local memory array references entirely
