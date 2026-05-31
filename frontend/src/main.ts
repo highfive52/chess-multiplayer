@@ -4,64 +4,140 @@ import { createInitialBoard } from "./boardState";
 import { renderBoard } from "./renderer";
 import type { Position, BoardMatrix } from "./types";
 import { toAlgebraic } from "./coordinates";
+import "./style.css";
 
 console.log("TypeScript environment up and running!");
 
 // --- GAME STATE CONTAINER ---
 const board: BoardMatrix = createInitialBoard();
 let selectedSquare: Position | null = null;
+let myRole: "white" | "black" | "spectator" | null = null;
+
+// Grab our dynamic HUD elements
+const identityEl = document.getElementById("player-identity");
+const turnEl = document.getElementById("turn-indicator");
 
 // Initialize Network Socket Connection
 const socket = io("http://localhost:8000");
 
 // 🏁 TRIGGER 1: Synchronous Initial Draw on Application Boot
-renderBoard(board, selectedSquare);
+// renderBoard(board, selectedSquare);
 
 // --- TRIGGER 2: REMOTE NETWORK INPUTS (SOCKET LISTENERS) ---
 socket.on("connect", () => {
   console.log("Connected to the server successfully! Socket ID:", socket.id);
+
+  // Explicitly request our identity over the stabilized WebSocket pipe
+  socket.emit("request_role");
 });
 
-// Listen for incoming opponent moves from the server backend
-socket.on("move", (payload: { from: Position; to: Position }) => {
-  const { from, to } = payload;
+// Catch initial role assignment AND catch up to the current board state
+socket.on(
+  "assigned_role",
+  (payload: {
+    color: "white" | "black" | "spectator";
+    board: BoardMatrix;
+    current_turn: string;
+  }) => {
+    myRole = payload.color;
 
-  console.log(
-    `📡 Network move received: From [${from.row}][${from.col}] to [${to.row}][${to.col}]`
-  );
+    // 1. Establish identity HUD element
+    if (identityEl) {
+      identityEl.textContent = myRole.toUpperCase();
+      if (myRole === "white") identityEl.style.color = "#ffffff";
+      if (myRole === "black") identityEl.style.color = "#000000";
+      if (myRole === "spectator") identityEl.style.color = "#6b7280";
+    }
 
-  // Target the item currently resting at the incoming address coordinates
-  const movingPiece = board[from.row][from.col];
+    // 2. Hydrate the local board matrix with the server's current truth
+    for (let r = 0; r < 8; r++) {
+      board[r] = [...payload.board[r]];
+    }
 
-  if (movingPiece) {
-    // Replicate the movement data mutation in our local matrix memory array
-    board[to.row][to.col] = movingPiece;
-    board[from.row][from.col] = null;
+    // 3. Update the Turn HUD to reflect the active player
+    if (turnEl) {
+      const isMyTurn = myRole === payload.current_turn;
+      if (myRole === "spectator") {
+        turnEl.textContent = `Spectating - ${payload.current_turn.toUpperCase()}'s Turn`;
+        turnEl.style.color = "#4b5563";
+      } else if (isMyTurn) {
+        turnEl.textContent = "YOUR TURN";
+        turnEl.style.color = "#16a34a";
+      } else {
+        turnEl.textContent = "OPPONENT'S TURN";
+        turnEl.style.color = "#dc2626";
+      }
+    }
 
-    // Repaint the screen so the player sees the opponent's pieces move automatically
+    // 4. Force a fresh screen paint
     renderBoard(board, selectedSquare);
   }
-});
+);
+
+// ONE AUTHORITATIVE SNAPSHOT LISTENER (Duplicates Cleaned Out)
+socket.on(
+  "move_executed",
+  (payload: { board: BoardMatrix; current_turn: string; last_move: any }) => {
+    console.log("📥 Authoritative state snapshot arrived from server!");
+
+    // 1. Overwrite local memory array references entirely
+    for (let r = 0; r < 8; r++) {
+      board[r] = [...payload.board[r]];
+    }
+
+    // 2. Update Dynamic Turn HUD Indicator text and style
+    if (turnEl) {
+      const isMyTurn = myRole === payload.current_turn;
+
+      if (myRole === "spectator") {
+        turnEl.textContent = `Spectating - ${payload.current_turn.toUpperCase()}'s Turn`;
+        turnEl.style.color = "#4b5563";
+      } else if (isMyTurn) {
+        turnEl.textContent = "YOUR TURN";
+        turnEl.style.color = "#16a34a"; // Alert Green
+      } else {
+        turnEl.textContent = "OPPONENT'S TURN";
+        turnEl.style.color = "#dc2626"; // Alert Red
+      }
+    }
+
+    // 3. Repaint UI using master matrix layout
+    renderBoard(board, selectedSquare);
+  }
+);
 
 // --- TRIGGER 3: LOCAL HUMAN INPUT (CLICK INTERACTION LOOP) ---
 const boardContainer = document.getElementById("chess-board");
 if (boardContainer) {
   boardContainer.addEventListener("click", (event) => {
-    // Find the closest parent div with the class "square"
     const targetSquare = (event.target as HTMLElement).closest(".square") as HTMLElement;
     if (!targetSquare) return;
 
-    // Extract the row/col coordinates from the HTML data attributes
     const row = parseInt(targetSquare.dataset.row!, 10);
     const col = parseInt(targetSquare.dataset.col!, 10);
     const clickedPiece = board[row][col];
 
     console.log(`Clicked square: ${toAlgebraic(row, col)} | Indices: [${row}][${col}]`);
 
-    // CASE 1: No piece is currently selected
+    // CASE 1: No piece is currently selected (Attempting to lift a piece)
     if (selectedSquare === null) {
       if (clickedPiece) {
-        // Select the piece
+        // 🔒 SAFETY CHECK: Map frontend character flags ("w"/"b") to identity role
+        const pieceColorMapped = clickedPiece.color === "w" ? "white" : "black";
+
+        if (myRole === "spectator") {
+          console.log("Spectators cannot select or move pieces.");
+          return;
+        }
+
+        if (pieceColorMapped !== myRole) {
+          console.log(
+            `Selection blocked. You are ${myRole?.toUpperCase()}, that piece is ${pieceColorMapped.toUpperCase()}`
+          );
+          return;
+        }
+
+        // Select the piece safely
         selectedSquare = { row, col };
         console.log(`Selected piece: ${clickedPiece.color}${clickedPiece.type.toUpperCase()}`);
       } else {
@@ -73,40 +149,33 @@ if (boardContainer) {
       const fromRow = selectedSquare.row;
       const fromCol = selectedSquare.col;
 
-      // If they clicked the exact same square twice, just deselect it
       if (fromRow === row && fromCol === col) {
         selectedSquare = null;
         console.log("Deselected active piece.");
       } else {
-        // Execute the move local memory state mutation
         const movingPiece = board[fromRow][fromCol];
 
         if (movingPiece) {
           console.log(
-            `Moving ${movingPiece.color}${movingPiece.type.toUpperCase()} from ${toAlgebraic(
+            `🚀 Proposing move: ${
+              movingPiece.color
+            }${movingPiece.type.toUpperCase()} from ${toAlgebraic(
               fromRow,
               fromCol
             )} to ${toAlgebraic(row, col)}`
           );
 
-          // Move the piece reference to the target index address
-          board[row][col] = movingPiece;
-          // Clear the old home square index address
-          board[fromRow][fromCol] = null;
-
-          // Broadcast this move payload over the network
-          socket.emit("move", {
+          // Broadcast proposal up to server referee
+          socket.emit("propose_move", {
             from: { row: fromRow, col: fromCol },
             to: { row, col },
           });
-        } // <--- Fixed: This brace now safely closes if (movingPiece)
+        }
 
-        // Reset tracking state after a completed move interaction
         selectedSquare = null;
       }
     }
 
-    // Redraw the visual board layer to reflect local state mutations
     renderBoard(board, selectedSquare);
   });
 }
