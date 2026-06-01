@@ -18,17 +18,50 @@ const identityEl = document.getElementById("player-identity");
 const turnEl = document.getElementById("turn-indicator");
 
 // Initialize Network Socket Connection
-const socket = io("http://localhost:8000");
+const BACKEND_URL =
+  window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    ? "http://localhost:8000"
+    : "https://chess-multiplayer-k792.onrender.com";
+
+const socket = io(BACKEND_URL, {
+  transports: ["websocket", "polling"],
+});
 
 // 🏁 TRIGGER 1: Synchronous Initial Draw on Application Boot
-// renderBoard(board, selectedSquare);
+renderBoard(board, selectedSquare);
 
 // --- TRIGGER 2: REMOTE NETWORK INPUTS (SOCKET LISTENERS) ---
-socket.on("connect", () => {
-  console.log("Connected to the server successfully! Socket ID:", socket.id);
+const loaderEl = document.getElementById("server-loader");
 
-  // Explicitly request our identity over the stabilized WebSocket pipe
-  socket.emit("request_role");
+// When the handshake completes perfectly, fade out and hide the loader
+socket.on("connect", () => {
+  console.log(`⚡ Connected to backend at ${BACKEND_URL}! ID:`, socket.id);
+
+  const hideLoader = () => {
+    const activeLoader = document.getElementById("server-loader");
+    if (activeLoader) {
+      activeLoader.style.opacity = "0";
+      setTimeout(() => {
+        activeLoader.style.display = "none";
+      }, 500);
+    }
+  };
+
+  // If DOM is already fully loaded, clear it now. Otherwise, hook to layout ready event.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", hideLoader);
+  } else {
+    hideLoader();
+  }
+});
+
+// If the connection drops mid-game, pop the loader back up
+socket.on("disconnect", () => {
+  console.warn("❌ Disconnected from cloud server.");
+  if (loaderEl) {
+    loaderEl.style.display = "flex";
+    loaderEl.style.opacity = "1";
+  }
 });
 
 // Catch initial role assignment AND catch up to the current board state

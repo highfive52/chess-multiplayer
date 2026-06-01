@@ -85,15 +85,32 @@ async def favicon():
 async def connect(sid, environ):
     print(f"[SOCKET] Client connected: {sid}")
 
-    # Dynamically lock in the slots in memory immediately
+    # 1. Dynamically lock in the slots in memory immediately
     if GAME_STATE["players"]["white"] is None:
         GAME_STATE["players"]["white"] = sid
+        role = "white"
         print(f"Slot Lock: {sid} is White")
     elif GAME_STATE["players"]["black"] is None:
         GAME_STATE["players"]["black"] = sid
+        role = "black"
         print(f"Slot Lock: {sid} is Black")
     else:
+        role = "spectator"
         print(f"Slot Lock: {sid} is Spectator")
+
+    # 2. PROACTIVE INITIALIZATION: Push the state immediately to the connecting player
+    print(
+        f"[ROLE DISPATCH] Proactively pushing role '{role}' and matrix to SID [{sid}]"
+    )
+    await sio.emit(
+        "assigned_role",
+        {
+            "color": role,
+            "board": GAME_STATE["board"],
+            "current_turn": GAME_STATE["current_turn"],
+        },
+        to=sid,  # Target explicitly only this specific browser session
+    )
 
 
 # Authoritative Role Dispatcher
