@@ -13,9 +13,19 @@ const board: BoardMatrix = createInitialBoard();
 let selectedSquare: Position | null = null;
 let myRole: "white" | "black" | "spectator" | null = null;
 
+// Grab our structural screens
+const lobbyScreen = document.getElementById("lobby-screen");
+const appContainer = document.getElementById("app-container");
+
 // Grab our dynamic HUD elements
 const identityEl = document.getElementById("player-identity");
 const turnEl = document.getElementById("turn-indicator");
+const roomDisplay = document.getElementById("room-display"); // Added for Milestone 3
+
+// Grab lobby control elements
+const btnCreate = document.getElementById("btn-create") as HTMLButtonElement;
+const btnJoin = document.getElementById("btn-join") as HTMLButtonElement;
+const inputRoomCode = document.getElementById("input-room-code") as HTMLInputElement;
 
 // Initialize Network Socket Connection
 const BACKEND_URL =
@@ -42,13 +52,28 @@ const socket = io(BACKEND_URL, {
   },
 });
 
-// 🏁 TRIGGER 1: Synchronous Initial Draw on Application Boot
+// 🏁 TRIGGER 1: Synchronous Initial Draw & Auto-Join URL Parsing
 renderBoard(board, selectedSquare);
+
+// Check if a room code is already embedded in the browser's address bar
+const urlParams = new URLSearchParams(window.location.search);
+const roomFromUrl = urlParams.get("room")?.trim().toUpperCase();
+
+// If a valid 4-character room code exists in the URL, auto-submit it immediately
+if (roomFromUrl && roomFromUrl.length === 4) {
+  console.log(`[BOOT] Detected room parameter in URL. Auto-joining: ${roomFromUrl}`);
+
+  // Optional: Update the input field text just to give visual feedback before it hides
+  if (inputRoomCode) inputRoomCode.value = roomFromUrl;
+
+  // Fire the network join request automatically behind the scenes
+  socket.emit("join_room", { roomId: roomFromUrl });
+}
 
 // --- TRIGGER 2: REMOTE NETWORK INPUTS (SOCKET LISTENERS) ---
 const loaderEl = document.getElementById("server-loader");
 
-// When the handshake completes perfectly, fade out and hide the loader
+// When the handshake completes perfectly, drop the loader blocker overlay
 socket.on("connect", () => {
   console.log(`⚡ Connected to backend at ${BACKEND_URL}! ID:`, socket.id);
 
@@ -62,7 +87,6 @@ socket.on("connect", () => {
     }
   };
 
-  // If DOM is already fully loaded, clear it now. Otherwise, hook to layout ready event.
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", hideLoader);
   } else {
@@ -79,17 +103,62 @@ socket.on("disconnect", () => {
   }
 });
 
+// --- NEW: LOBBY CORE INTERACTION RULES ---
+
+// Action A: Create Match Button Clicked
+if (btnCreate) {
+  btnCreate.addEventListener("click", () => {
+    const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let randomCode = "";
+    for (let i = 0; i < 4; i++) {
+      randomCode += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    console.log(`[LOBBY] Requesting creation of Room: ${randomCode}`);
+
+    // Safely update the search parameters using the native URL API
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set("room", randomCode);
+    window.history.pushState({ path: currentUrl.toString() }, "", currentUrl.toString());
+
+    socket.emit("join_room", { roomId: randomCode });
+  });
+}
+
+// Action B: Join Match Button Clicked
+if (btnJoin && inputRoomCode) {
+  btnJoin.addEventListener("click", () => {
+    const enteredCode = inputRoomCode.value.trim().toUpperCase();
+    if (enteredCode.length !== 4) {
+      alert("Please enter a valid 4-character room code.");
+      return;
+    }
+    console.log(`[LOBBY] Requesting entry to Room: ${enteredCode}`);
+
+    // Safely update the search parameters using the native URL API
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set("room", enteredCode);
+    window.history.pushState({ path: currentUrl.toString() }, "", currentUrl.toString());
+
+    socket.emit("join_room", { roomId: enteredCode });
+  });
+}
+
 // Catch initial role assignment AND catch up to the current board state
 socket.on(
   "assigned_role",
   (payload: {
+    room_id: string; // Added for Milestone 3 room tracking
     color: "white" | "black" | "spectator";
     board: BoardMatrix;
     current_turn: string;
   }) => {
     myRole = payload.color;
 
-    // 1. Establish identity HUD element
+    // 1. Establish room code and identity HUD elements
+    if (roomDisplay) {
+      roomDisplay.textContent = payload.room_id;
+    }
+
     if (identityEl) {
       identityEl.textContent = myRole.toUpperCase();
       if (myRole === "white") identityEl.style.color = "#ffffff";
@@ -117,12 +186,16 @@ socket.on(
       }
     }
 
+    // NEW MILESTONE 3 TOGGLE: Transition views from Lobby to Active Game Room
+    if (lobbyScreen) lobbyScreen.classList.add("hidden");
+    if (appContainer) appContainer.classList.remove("hidden");
+
     // 4. Force a fresh screen paint
     renderBoard(board, selectedSquare);
   }
 );
 
-// ONE AUTHORITATIVE SNAPSHOT LISTENER (Duplicates Cleaned Out)
+// ONE AUTHORITATIVE SNAPSHOT LISTENER
 socket.on(
   "move_executed",
   (payload: {

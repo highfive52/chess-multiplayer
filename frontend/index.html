@@ -9,8 +9,35 @@
   </div>
 
   <div id="app">
-    <div id="app-container">
+    <div id="lobby-screen">
+      <div class="lobby-card">
+        <h1>Multiplayer Chess</h1>
+        <p class="lobby-subtitle">Create a private battlefield or join an existing match</p>
+
+        <button id="btn-create" class="btn-primary">Create Private Match</button>
+
+        <div class="lobby-divider">
+          <span>OR</span>
+        </div>
+
+        <div class="join-group">
+          <input
+            type="text"
+            id="input-room-code"
+            placeholder="Enter 4-Letter Code"
+            maxlength="4"
+            autocomplete="off"
+          />
+          <button id="btn-join" class="btn-secondary">Join Game</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="app-container" class="hidden">
       <div id="match-hud">
+        <div class="hud-item">
+          Room: <span id="room-display" style="font-weight: bold; color: #38bdf8">----</span>
+        </div>
         <div class="hud-item">Identity: <span id="player-identity">Connecting...</span></div>
         <div class="hud-item">Status: <span id="turn-indicator">Waiting...</span></div>
       </div>

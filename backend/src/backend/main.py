@@ -14,9 +14,6 @@ sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 app = FastAPI()
 asgi_app = socketio.ASGIApp(sio, app)
 
-# Static Key for Milestone 1 & 2
-GLOBAL_ROOM_KEY = "room:global"
-
 
 def create_initial_board():
     return [
@@ -54,8 +51,28 @@ def create_initial_board():
     ]
 
 
-# Maps player slots directly to persistent localStorage UUID tokens
-ACTIVE_PLAYERS = {"white": None, "black": None}
+def create_initial_state():
+    """Generates a complete, isolated game room schema."""
+    return {
+        "players": {
+            "white": None,
+            "black": None,
+        },  # Dynamic seating inside the DB payload
+        "current_turn": "white",
+        "board": create_initial_board(),
+        "castling_rights": {
+            "w": {
+                "king_has_moved": False,
+                "a_rook_has_moved": False,
+                "h_rook_has_moved": False,
+            },
+            "b": {
+                "king_has_moved": False,
+                "a_rook_has_moved": False,
+                "h_rook_has_moved": False,
+            },
+        },
+    }
 
 
 @app.get("/")
@@ -63,7 +80,6 @@ async def root():
     return {"status": "online", "service": "chess-multiplayer-backend"}
 
 
-# --- HEALTH CHECK ENDPOINT ---
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
@@ -74,11 +90,11 @@ async def favicon():
     return Response(status_code=204)
 
 
+# --- TRANSIT HANDSHAKE ---
 @sio.event
 async def connect(sid, environ, auth):
-    print(f"[CONNECT] Transport link established for SID: {sid}")
+    print(f"[CONNECT] Transport established for SID: {sid}")
 
-    # Identity Extraction from Handshake Auth object (Aligned to frontend payload)
     user_id = None
     if auth and "userId" in auth:
         user_id = auth["userId"]
@@ -89,56 +105,74 @@ async def connect(sid, environ, auth):
         )
         return False
 
-    # Cache the user_id inside this specific socket's secure connection session context
-    await sio.save_session(sid, {"user_id": user_id})
+    # Cache the user identity, initialize room as None until they explicitly join a room
+    await sio.save_session(sid, {"user_id": user_id, "room_id": None})
 
-    # FETCH: Ask the Redis Model if a global match is already running
-    raw_state = await redis.get(GLOBAL_ROOM_KEY)
 
+# --- NEW LOBBY CHANNEL ORCHESTRATION ---
+@sio.on("join_room")
+async def handle_join_room(sid, data):
+    room_code = data.get("roomId", "").strip().upper()
+    if not room_code or len(room_code) != 4:
+        print(f"[ROOM REJECTED] SID [{sid}] provided an invalid code: {room_code}")
+        return
+
+    redis_room_key = f"room:{room_code}"
+
+    # Extract user identity from socket's session storage
+    session = await sio.get_session(sid)
+    user_id = session.get("user_id")
+
+    # Bind this socket's session to the room code
+    await sio.save_session(sid, {"user_id": user_id, "room_id": room_code})
+
+    # Tell Socket.io to subscribe this connection to the target isolated room channel
+    await sio.enter_room(sid, redis_room_key)
+    print(f"[ROOM JOIN] SID [{sid}] entered network channel: {redis_room_key}")
+
+    # Fetch existing match state, or provision a fresh game room if it's the first time
+    raw_state = await redis.get(redis_room_key)
     if not raw_state:
-        game_state = {
-            "board": create_initial_board(),
-            "current_turn": "white",
-            "castling_rights": {
-                "w": {
-                    "king_has_moved": False,
-                    "a_rook_has_moved": False,
-                    "h_rook_has_moved": False,
-                },
-                "b": {
-                    "king_has_moved": False,
-                    "a_rook_has_moved": False,
-                    "h_rook_has_moved": False,
-                },
-            },
-        }
-        await redis.set(GLOBAL_ROOM_KEY, json.dumps(game_state))
+        game_state = create_initial_state()
+        print(f"[ROOM PROVISION] Initialized empty state cache for Room [{room_code}]")
     else:
         game_state = json.loads(raw_state)
 
-    # Dynamic Seat Assignment (Checking token presence rather than transient connection sid)
-    if ACTIVE_PLAYERS["white"] == user_id:
+    # Dedicated Seat Assignment scoped directly within this room's state context
+    players = game_state["players"]
+
+    if players["white"] == user_id:
         role = "white"
-        print(f"[SLOT RECLAIM] User [{user_id}] reconnected and reclaimed White.")
-    elif ACTIVE_PLAYERS["black"] == user_id:
+        print(
+            f"[SLOT RECLAIM] User [{user_id}] returned to White in Room [{room_code}]."
+        )
+    elif players["black"] == user_id:
         role = "black"
-        print(f"[SLOT RECLAIM] User [{user_id}] reconnected and reclaimed Black.")
-    elif ACTIVE_PLAYERS["white"] is None:
-        ACTIVE_PLAYERS["white"] = user_id
+        print(
+            f"[SLOT RECLAIM] User [{user_id}] returned to Black in Room [{room_code}]."
+        )
+    elif players["white"] is None:
+        players["white"] = user_id
         role = "white"
-        print(f"[SLOT CLAIM] User [{user_id}] claimed empty White slot.")
-    elif ACTIVE_PLAYERS["black"] is None:
-        ACTIVE_PLAYERS["black"] = user_id
+        print(f"[SLOT CLAIM] User [{user_id}] claimed White in Room [{room_code}].")
+    elif players["black"] is None:
+        players["black"] = user_id
         role = "black"
-        print(f"[SLOT CLAIM] User [{user_id}] claimed empty Black slot.")
+        print(f"[SLOT CLAIM] User [{user_id}] claimed Black in Room [{room_code}].")
     else:
         role = "spectator"
-        print(f"[SLOT SPECTATE] User [{user_id}] connected as Spectator.")
+        print(
+            f"[SLOT SPECTATE] User [{user_id}] joined Room [{room_code}] as Spectator."
+        )
 
-    # Emit configuration directly back to the freshly connected view
+    # Commit the mutated state back to the Redis key store
+    await redis.set(redis_room_key, json.dumps(game_state))
+
+    # Target view hydration strictly to the caller link
     await sio.emit(
         "assigned_role",
         {
+            "room_id": room_code,
             "color": role,
             "board": game_state["board"],
             "current_turn": game_state["current_turn"],
@@ -147,66 +181,44 @@ async def connect(sid, environ, auth):
     )
 
 
-# Authoritative Role Dispatcher
-@sio.on("request_role")
-async def handle_request_role(sid):
-    # FETCH: Pull the latest snapshot from Redis
-    raw_state = await redis.get(GLOBAL_ROOM_KEY)
-    if not raw_state:
-        print("[ERROR] request_role failed: No active match state found in Redis!")
-        return
-    game_state = json.loads(raw_state)
-
-    # Extract the user token cached on connection
-    session = await sio.get_session(sid)
-    user_id = session.get("user_id") if session else None
-
-    if ACTIVE_PLAYERS["white"] == user_id:
-        role = "white"
-    elif ACTIVE_PLAYERS["black"] == user_id:
-        role = "black"
-    else:
-        role = "spectator"
-
-    print(f"[ROLE DISPATCH] Sending stable role confirmation '{role}' to SID [{sid}]")
-
-    await sio.emit(
-        "assigned_role",
-        {
-            "color": role,
-            "board": game_state["board"],
-            "current_turn": game_state["current_turn"],
-        },
-        to=sid,
-    )
-
-
-# --- TRACK 3: VALIDATION & TRACK 4: REAL-TIME BROADCAST ---
+# --- VALIDATION & ISOLATED REAL-TIME BROADCAST ---
 @sio.on("propose_move")
 async def handle_propose_move(sid, data):
-    print(f"[SOCKET] Move proposed from SID [{sid}]: {data}")
+    # Pull current room credentials from socket session cache
+    session = await sio.get_session(sid)
+    if not session:
+        return
 
-    # 1. FETCH: Pull the latest authoritative state from your Redis Model Layer
-    raw_state = await redis.get(GLOBAL_ROOM_KEY)
+    room_code = session.get("room_id")
+    user_id = session.get("user_id")
+
+    if not room_code:
+        print(f"[REJECTED] SID [{sid}] attempted to move without a room assignment.")
+        return
+
+    redis_room_key = f"room:{room_code}"
+
+    # 1. FETCH: Look up authoritative match state from Redis
+    raw_state = await redis.get(redis_room_key)
     if not raw_state:
-        print("[ERROR] No active match state found in Redis!")
+        print(f"[ERROR] Active match state missing for Room {room_code}!")
         return
     game_state = json.loads(raw_state)
 
-    # 2. Identity & Turn Check via session tokens
-    session = await sio.get_session(sid)
-    user_id = session.get("user_id") if session else None
-
+    # 2. Identity & Turn Validation against room-specific seats
+    players = game_state["players"]
     player_color = (
         "white"
-        if ACTIVE_PLAYERS["white"] == user_id
+        if players["white"] == user_id
         else "black"
-        if ACTIVE_PLAYERS["black"] == user_id
+        if players["black"] == user_id
         else None
     )
 
     if player_color is None or player_color != game_state["current_turn"]:
-        print(f"[REJECTED] Out of turn or unauthorized: {player_color}")
+        print(
+            f"[REJECTED] Room [{room_code}] - Move out of turn or unauthorized from color: {player_color}"
+        )
         await sio.emit("move_rejected", {"reason": "Not your turn"}, to=sid)
         return
 
@@ -217,23 +229,23 @@ async def handle_propose_move(sid, data):
     f_row, f_col = move_from["row"], move_from["col"]
     t_row, t_col = move_to["row"], move_to["col"]
 
-    # TRACK 3: GEOMETRIC RULES ENGINE VALIDATION
+    # GEOMETRIC RULES ENGINE VALIDATION
     if not is_legal_move(
         game_state["board"], f_row, f_col, t_row, t_col, game_state["castling_rights"]
     ):
         print(
-            f"[REJECTED] Geometric Rule Violation from [{f_row}][{f_col}] to [{t_row}][{t_col}]"
+            f"[REJECTED] Geometric Rule Violation in Room [{room_code}] from [{f_row}][{f_col}] to [{t_row}][{t_col}]"
         )
         await sio.emit("move_rejected", {"reason": "Illegal chess movement"}, to=sid)
         return
 
-    # 4. Authoritative State Mutation in Python memory
+    # 4. State Mutation
     moving_piece = game_state["board"][f_row][f_col]
     if moving_piece:
         p_type = moving_piece["type"]
         p_color = moving_piece["color"]
 
-        # CHECK FOR SPECIAL ORCHESTRATION: King Castling Slide
+        # King Castling Slide Check
         if p_type == "k" and abs(t_col - f_col) == 2:
             home_rank = 0 if p_color == "w" else 7
             is_kingside = t_col > f_col
@@ -241,12 +253,11 @@ async def handle_propose_move(sid, data):
             old_rook_col = 7 if is_kingside else 0
             new_rook_col = 5 if is_kingside else 3
 
-            # Snap-move the Rook programmatically
             rook_piece = game_state["board"][home_rank][old_rook_col]
             game_state["board"][home_rank][new_rook_col] = rook_piece
             game_state["board"][home_rank][old_rook_col] = None
 
-        # UPDATE HISTORICAL CASTLING RIGHTS
+        # Update Castling Rights
         rights = game_state["castling_rights"][p_color]
         if p_type == "k":
             rights["king_has_moved"] = True
@@ -256,18 +267,17 @@ async def handle_propose_move(sid, data):
             elif f_col == 7:
                 rights["h_rook_has_moved"] = True
 
-        # Standard physical position update for the primary moving piece
         game_state["board"][t_row][t_col] = moving_piece
         game_state["board"][f_row][f_col] = None
 
-    # 5. Advance Turn Switch
+    # 5. Advance Turn
     game_state["current_turn"] = "black" if player_color == "white" else "white"
 
-    # 6. SAVE: Lock the mutated snapshot back down to Redis
-    await redis.set(GLOBAL_ROOM_KEY, json.dumps(game_state))
+    # 6. SAVE: Lock mutated data framework back down to Redis
+    await redis.set(redis_room_key, json.dumps(game_state))
 
-    # 7. Broadcast Full State Snapshot to the Views
-    print("[SOCKET] Broadcasting full authoritative board state to clients...")
+    # 7. BROADCAST: Confine event stream entirely to the channel members
+    print(f"[SOCKET] Broadcasting authoritative update to room pipe: {redis_room_key}")
     await sio.emit(
         "move_executed",
         {
@@ -275,10 +285,11 @@ async def handle_propose_move(sid, data):
             "current_turn": game_state["current_turn"],
             "last_move": {"from": move_from, "to": move_to},
         },
+        to=redis_room_key,  # Directs traffic exclusively to connections in this room
     )
 
 
 @sio.event
 async def disconnect(sid):
-    # Seats are preserved even when sockets close!
-    print(f"[DISCONNECT] Client link severed temporarily for SID: {sid}")
+    # Session state clears from transit layer, but seats remain preserved in Redis
+    print(f"[DISCONNECT] Client transport link severed for SID: {sid}")
