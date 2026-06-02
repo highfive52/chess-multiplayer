@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.136.3",
     "python-socketio>=5.16.2",
+    "redis>=8.0.0",
     "uvicorn>=0.48.0",
 ]
 
@@ -24,4 +25,5 @@ build-backend = "uv_build"
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.0.3",
+    "ruff>=0.15.15",
 ]

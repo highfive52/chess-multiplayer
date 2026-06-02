@@ -1,19 +1,25 @@
-# backend/src/backend/main.py
-import uvicorn
-import socketio
+import json
+import os
 from fastapi import FastAPI, Response
+import socketio
+import redis.asyncio as aioredis
 from backend.validator import is_legal_move
 
-app = FastAPI()
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
-asgi_app = socketio.ASGIApp(sio, other_asgi_app=app)
+# 1. Configure the Redis connection string (Defaulting to Docker localhost)
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+redis = aioredis.from_url(REDIS_URL, decode_responses=True)
 
-# --- TRACK 3: GLOBAL ENGINE GAME STATE ---
-# Insert this full grid layout into your GAME_STATE inside backend/src/backend/main.py
-GAME_STATE = {
-    "players": {"white": None, "black": None},
-    "current_turn": "white",
-    "board": [
+# 2. Setup Socket.io and FastAPI boundaries
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
+app = FastAPI()
+asgi_app = socketio.ASGIApp(sio, app)
+
+# Static Key for Milestone 1
+GLOBAL_ROOM_KEY = "room:global"
+
+
+def create_initial_board():
+    return [
         # Row 0: White Major Pieces
         [
             {"type": "r", "color": "w"},
@@ -45,20 +51,11 @@ GAME_STATE = {
             {"type": "n", "color": "b"},
             {"type": "r", "color": "b"},
         ],
-    ],
-    "castling_rights": {
-        "w": {
-            "king_has_moved": False,
-            "a_rook_has_moved": False,
-            "h_rook_has_moved": False,
-        },
-        "b": {
-            "king_has_moved": False,
-            "a_rook_has_moved": False,
-            "h_rook_has_moved": False,
-        },
-    },
-}
+    ]
+
+
+# Temporary tracking for connection slot mapping (Milestone 2 will move this entirely)
+ACTIVE_PLAYERS = {"white": None, "black": None}
 
 
 @app.get("/")
@@ -69,9 +66,6 @@ async def root():
 # --- HEALTH CHECK ENDPOINT ---
 @app.get("/health")
 async def health_check():
-    """
-    Explicit health status probe returning HTTP 200 OK.
-    """
     return {"status": "healthy"}
 
 
@@ -80,74 +74,91 @@ async def favicon():
     return Response(status_code=204)
 
 
-# --- NETWORK LIFECYCLE EVENTS ---
 @sio.event
 async def connect(sid, environ):
-    print(f"[SOCKET] Client connected: {sid}")
+    print(f"[CONNECT] Client linked up: {sid}")
 
-    # 1. Dynamically lock in the slots in memory immediately
-    if GAME_STATE["players"]["white"] is None:
-        GAME_STATE["players"]["white"] = sid
+    # FETCH: Ask the Redis Model if a global match is already running
+    raw_state = await redis.get(GLOBAL_ROOM_KEY)
+
+    if not raw_state:
+        # State Amnesia/First boot: Build full structural model schema
+        game_state = {
+            "board": create_initial_board(),
+            "current_turn": "white",
+            "castling_rights": {
+                "w": {
+                    "king_has_moved": False,
+                    "a_rook_has_moved": False,
+                    "h_rook_has_moved": False,
+                },
+                "b": {
+                    "king_has_moved": False,
+                    "a_rook_has_moved": False,
+                    "h_rook_has_moved": False,
+                },
+            },
+        }
+        # SAVE: Serialize into a JSON string and store in the KV vault
+        await redis.set(GLOBAL_ROOM_KEY, json.dumps(game_state))
+    else:
+        # State exists! Unpack the string back into a Python dictionary
+        game_state = json.loads(raw_state)
+
+    # Assign connection roles based on connection order for now
+    if ACTIVE_PLAYERS["white"] is None:
+        ACTIVE_PLAYERS["white"] = sid
         role = "white"
-        print(f"Slot Lock: {sid} is White")
-    elif GAME_STATE["players"]["black"] is None:
-        GAME_STATE["players"]["black"] = sid
+    elif ACTIVE_PLAYERS["black"] is None:
+        ACTIVE_PLAYERS["black"] = sid
         role = "black"
-        print(f"Slot Lock: {sid} is Black")
     else:
         role = "spectator"
-        print(f"Slot Lock: {sid} is Spectator")
 
-    # 2. PROACTIVE INITIALIZATION: Push the state immediately to the connecting player
-    print(
-        f"[ROLE DISPATCH] Proactively pushing role '{role}' and matrix to SID [{sid}]"
-    )
+    # Emit the configuration straight back to the freshly connected view
     await sio.emit(
         "assigned_role",
         {
             "color": role,
-            "board": GAME_STATE["board"],
-            "current_turn": GAME_STATE["current_turn"],
+            "board": game_state["board"],
+            "current_turn": game_state["current_turn"],
         },
-        to=sid,  # Target explicitly only this specific browser session
+        to=sid,
     )
 
 
 # Authoritative Role Dispatcher
 @sio.on("request_role")
 async def handle_request_role(sid):
-    if GAME_STATE["players"]["white"] == sid:
+    # 1. FETCH: Pull the latest snapshot from Redis
+    raw_state = await redis.get(GLOBAL_ROOM_KEY)
+    if not raw_state:
+        print("[ERROR] request_role failed: No active match state found in Redis!")
+        return
+    game_state = json.loads(raw_state)
+
+    # 2. Evaluate connection slot mapping
+    if ACTIVE_PLAYERS["white"] == sid:
         role = "white"
-    elif GAME_STATE["players"]["black"] == sid:
+    elif ACTIVE_PLAYERS["black"] == sid:
         role = "black"
     else:
         role = "spectator"
 
     print(
-        f"[ROLE DISPATCH] Sending stable role confirmation '{role}' and current board snapshot to SID [{sid}]"
+        f"[ROLE DISPATCH] Sending stable role confirmation '{role}' and Redis board snapshot to SID [{sid}]"
     )
 
-    # Send BOTH the role identity and the current state of the game
+    # 3. View Hydration: Send BOTH the role identity and the fresh state of the game down the pipe
     await sio.emit(
         "assigned_role",
         {
             "color": role,
-            "board": GAME_STATE["board"],
-            "current_turn": GAME_STATE["current_turn"],
+            "board": game_state["board"],
+            "current_turn": game_state["current_turn"],
         },
         to=sid,
     )
-
-
-@sio.event
-async def disconnect(sid):
-    print(f"[SOCKET] Client disconnected: {sid}")
-    if GAME_STATE["players"]["white"] == sid:
-        GAME_STATE["players"]["white"] = None
-        print("White slot is now vacant.")
-    elif GAME_STATE["players"]["black"] == sid:
-        GAME_STATE["players"]["black"] = None
-        print("Black slot is now vacant.")
 
 
 # --- TRACK 3: VALIDATION & TRACK 4: REAL-TIME BROADCAST ---
@@ -155,20 +166,28 @@ async def disconnect(sid):
 async def handle_propose_move(sid, data):
     print(f"[SOCKET] Move proposed from SID [{sid}]: {data}")
 
-    # 1. Identity & Turn Check
+    # 1. FETCH: Pull the latest authoritative state from your Redis Model Layer
+    raw_state = await redis.get(GLOBAL_ROOM_KEY)
+    if not raw_state:
+        print("[ERROR] No active match state found in Redis!")
+        return
+    game_state = json.loads(raw_state)
+
+    # 2. Identity & Turn Check (Now reading from the database snapshot)
     player_color = (
         "white"
-        if GAME_STATE["players"]["white"] == sid
+        if ACTIVE_PLAYERS["white"] == sid
         else "black"
-        if GAME_STATE["players"]["black"] == sid
+        if ACTIVE_PLAYERS["black"] == sid
         else None
     )
-    if player_color is None or player_color != GAME_STATE["current_turn"]:
+
+    if player_color is None or player_color != game_state["current_turn"]:
         print(f"[REJECTED] Out of turn or unauthorized: {player_color}")
         await sio.emit("move_rejected", {"reason": "Not your turn"}, to=sid)
         return
 
-    # 2. Extract coordinates
+    # 3. Extract coordinates
     move_from = data.get("from")
     move_to = data.get("to")
 
@@ -177,7 +196,7 @@ async def handle_propose_move(sid, data):
 
     # TRACK 3: GEOMETRIC RULES ENGINE VALIDATION
     if not is_legal_move(
-        GAME_STATE["board"], f_row, f_col, t_row, t_col, GAME_STATE["castling_rights"]
+        game_state["board"], f_row, f_col, t_row, t_col, game_state["castling_rights"]
     ):
         print(
             f"[REJECTED] Geometric Rule Violation from [{f_row}][{f_col}] to [{t_row}][{t_col}]"
@@ -185,8 +204,8 @@ async def handle_propose_move(sid, data):
         await sio.emit("move_rejected", {"reason": "Illegal chess movement"}, to=sid)
         return
 
-    # 3. Authoritative Python State Mutation (Only runs if validator returned True)
-    moving_piece = GAME_STATE["board"][f_row][f_col]
+    # 4. Authoritative State Mutation in Python memory
+    moving_piece = game_state["board"][f_row][f_col]
     if moving_piece:
         p_type = moving_piece["type"]
         p_color = moving_piece["color"]
@@ -196,17 +215,16 @@ async def handle_propose_move(sid, data):
             home_rank = 0 if p_color == "w" else 7
             is_kingside = t_col > f_col
 
-            # Identify source and destination of the castling Rook
             old_rook_col = 7 if is_kingside else 0
             new_rook_col = 5 if is_kingside else 3
 
             # Snap-move the Rook programmatically
-            rook_piece = GAME_STATE["board"][home_rank][old_rook_col]
-            GAME_STATE["board"][home_rank][new_rook_col] = rook_piece
-            GAME_STATE["board"][home_rank][old_rook_col] = None
+            rook_piece = game_state["board"][home_rank][old_rook_col]
+            game_state["board"][home_rank][new_rook_col] = rook_piece
+            game_state["board"][home_rank][old_rook_col] = None
 
-        # UPDATE HISTORICAL CASTLING RIGHTS ON ANY RELEVANT PIECE MOVE
-        rights = GAME_STATE["castling_rights"][p_color]
+        # UPDATE HISTORICAL CASTLING RIGHTS
+        rights = game_state["castling_rights"][p_color]
         if p_type == "k":
             rights["king_has_moved"] = True
         elif p_type == "r":
@@ -216,27 +234,31 @@ async def handle_propose_move(sid, data):
                 rights["h_rook_has_moved"] = True
 
         # Standard physical position update for the primary moving piece
-        GAME_STATE["board"][t_row][t_col] = moving_piece
-        GAME_STATE["board"][f_row][f_col] = None
+        game_state["board"][t_row][t_col] = moving_piece
+        game_state["board"][f_row][f_col] = None
 
-    # 4. Advance Turn Switch
-    GAME_STATE["current_turn"] = "black" if player_color == "white" else "white"
+    # 5. Advance Turn Switch
+    game_state["current_turn"] = "black" if player_color == "white" else "white"
 
-    # 5. Broadcast Full State Snapshot
+    # 6. SAVE: Lock the mutated snapshot back down to Redis
+    await redis.set(GLOBAL_ROOM_KEY, json.dumps(game_state))
+
+    # 7. Broadcast Full State Snapshot to the Views
     print("[SOCKET] Broadcasting full authoritative board state to clients...")
     await sio.emit(
         "move_executed",
         {
-            "board": GAME_STATE["board"],
-            "current_turn": GAME_STATE["current_turn"],
+            "board": game_state["board"],
+            "current_turn": game_state["current_turn"],
             "last_move": {"from": move_from, "to": move_to},
         },
     )
 
 
-def main():
-    uvicorn.run("backend.main:asgi_app", host="127.0.0.1", port=8000, reload=True)
-
-
-if __name__ == "__main__":
-    main()
+@sio.event
+async def disconnect(sid):
+    print(f"[DISCONNECT] Client left: {sid}")
+    if ACTIVE_PLAYERS["white"] == sid:
+        ACTIVE_PLAYERS["white"] = None
+    elif ACTIVE_PLAYERS["black"] == sid:
+        ACTIVE_PLAYERS["black"] = None

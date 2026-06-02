@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently --kill-others -n \"backend,frontend\" -c \"bgBlue,bgGreen\" \"uv run uvicorn backend.main:asgi_app --reload --port 8000\" \"npm run dev --prefix frontend\""
+    "dev": "concurrently --kill-others -n \"redis,backend,frontend\" -c \"bgRed,bgBlue,bgGreen\" \"docker run --rm --name chess-redis -p 6379:6379 redis:alpine\" \"uv run uvicorn backend.main:asgi_app --reload --port 8000\" \"npm run dev --prefix frontend\""
   },
   "devDependencies": {
     "concurrently": "^10.0.0"
