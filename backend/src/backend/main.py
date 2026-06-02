@@ -14,7 +14,7 @@ sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 app = FastAPI()
 asgi_app = socketio.ASGIApp(sio, app)
 
-# Static Key for Milestone 1
+# Static Key for Milestone 1 & 2
 GLOBAL_ROOM_KEY = "room:global"
 
 
@@ -54,7 +54,7 @@ def create_initial_board():
     ]
 
 
-# Temporary tracking for connection slot mapping (Milestone 2 will move this entirely)
+# Maps player slots directly to persistent localStorage UUID tokens
 ACTIVE_PLAYERS = {"white": None, "black": None}
 
 
@@ -75,14 +75,27 @@ async def favicon():
 
 
 @sio.event
-async def connect(sid, environ):
-    print(f"[CONNECT] Client linked up: {sid}")
+async def connect(sid, environ, auth):
+    print(f"[CONNECT] Transport link established for SID: {sid}")
+
+    # Identity Extraction from Handshake Auth object (Aligned to frontend payload)
+    user_id = None
+    if auth and "userId" in auth:
+        user_id = auth["userId"]
+        print(f"[IDENTITY] Handshake authenticated user token: {user_id}")
+    else:
+        print(
+            "[IDENTITY WARNING] Client connected without an identity token. Rejecting connection."
+        )
+        return False
+
+    # Cache the user_id inside this specific socket's secure connection session context
+    await sio.save_session(sid, {"user_id": user_id})
 
     # FETCH: Ask the Redis Model if a global match is already running
     raw_state = await redis.get(GLOBAL_ROOM_KEY)
 
     if not raw_state:
-        # State Amnesia/First boot: Build full structural model schema
         game_state = {
             "board": create_initial_board(),
             "current_turn": "white",
@@ -99,23 +112,30 @@ async def connect(sid, environ):
                 },
             },
         }
-        # SAVE: Serialize into a JSON string and store in the KV vault
         await redis.set(GLOBAL_ROOM_KEY, json.dumps(game_state))
     else:
-        # State exists! Unpack the string back into a Python dictionary
         game_state = json.loads(raw_state)
 
-    # Assign connection roles based on connection order for now
-    if ACTIVE_PLAYERS["white"] is None:
-        ACTIVE_PLAYERS["white"] = sid
+    # Dynamic Seat Assignment (Checking token presence rather than transient connection sid)
+    if ACTIVE_PLAYERS["white"] == user_id:
         role = "white"
-    elif ACTIVE_PLAYERS["black"] is None:
-        ACTIVE_PLAYERS["black"] = sid
+        print(f"[SLOT RECLAIM] User [{user_id}] reconnected and reclaimed White.")
+    elif ACTIVE_PLAYERS["black"] == user_id:
         role = "black"
+        print(f"[SLOT RECLAIM] User [{user_id}] reconnected and reclaimed Black.")
+    elif ACTIVE_PLAYERS["white"] is None:
+        ACTIVE_PLAYERS["white"] = user_id
+        role = "white"
+        print(f"[SLOT CLAIM] User [{user_id}] claimed empty White slot.")
+    elif ACTIVE_PLAYERS["black"] is None:
+        ACTIVE_PLAYERS["black"] = user_id
+        role = "black"
+        print(f"[SLOT CLAIM] User [{user_id}] claimed empty Black slot.")
     else:
         role = "spectator"
+        print(f"[SLOT SPECTATE] User [{user_id}] connected as Spectator.")
 
-    # Emit the configuration straight back to the freshly connected view
+    # Emit configuration directly back to the freshly connected view
     await sio.emit(
         "assigned_role",
         {
@@ -130,26 +150,26 @@ async def connect(sid, environ):
 # Authoritative Role Dispatcher
 @sio.on("request_role")
 async def handle_request_role(sid):
-    # 1. FETCH: Pull the latest snapshot from Redis
+    # FETCH: Pull the latest snapshot from Redis
     raw_state = await redis.get(GLOBAL_ROOM_KEY)
     if not raw_state:
         print("[ERROR] request_role failed: No active match state found in Redis!")
         return
     game_state = json.loads(raw_state)
 
-    # 2. Evaluate connection slot mapping
-    if ACTIVE_PLAYERS["white"] == sid:
+    # Extract the user token cached on connection
+    session = await sio.get_session(sid)
+    user_id = session.get("user_id") if session else None
+
+    if ACTIVE_PLAYERS["white"] == user_id:
         role = "white"
-    elif ACTIVE_PLAYERS["black"] == sid:
+    elif ACTIVE_PLAYERS["black"] == user_id:
         role = "black"
     else:
         role = "spectator"
 
-    print(
-        f"[ROLE DISPATCH] Sending stable role confirmation '{role}' and Redis board snapshot to SID [{sid}]"
-    )
+    print(f"[ROLE DISPATCH] Sending stable role confirmation '{role}' to SID [{sid}]")
 
-    # 3. View Hydration: Send BOTH the role identity and the fresh state of the game down the pipe
     await sio.emit(
         "assigned_role",
         {
@@ -173,12 +193,15 @@ async def handle_propose_move(sid, data):
         return
     game_state = json.loads(raw_state)
 
-    # 2. Identity & Turn Check (Now reading from the database snapshot)
+    # 2. Identity & Turn Check via session tokens
+    session = await sio.get_session(sid)
+    user_id = session.get("user_id") if session else None
+
     player_color = (
         "white"
-        if ACTIVE_PLAYERS["white"] == sid
+        if ACTIVE_PLAYERS["white"] == user_id
         else "black"
-        if ACTIVE_PLAYERS["black"] == sid
+        if ACTIVE_PLAYERS["black"] == user_id
         else None
     )
 
@@ -257,8 +280,5 @@ async def handle_propose_move(sid, data):
 
 @sio.event
 async def disconnect(sid):
-    print(f"[DISCONNECT] Client left: {sid}")
-    if ACTIVE_PLAYERS["white"] == sid:
-        ACTIVE_PLAYERS["white"] = None
-    elif ACTIVE_PLAYERS["black"] == sid:
-        ACTIVE_PLAYERS["black"] = None
+    # Seats are preserved even when sockets close!
+    print(f"[DISCONNECT] Client link severed temporarily for SID: {sid}")

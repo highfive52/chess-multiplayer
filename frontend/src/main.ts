@@ -23,8 +23,23 @@ const BACKEND_URL =
     ? "http://localhost:8000"
     : "https://chess-multiplayer-k792.onrender.com";
 
+// Check if an ID already exists in the browser's storage
+let userId = localStorage.getItem("chess_user_id");
+
+if (!userId) {
+  // 2. Generate a fresh, standard unique token if none is found
+  userId = crypto.randomUUID();
+  localStorage.setItem("chess_user_id", userId);
+  console.log(`[IDENTITY] Fresh token generated & saved: ${userId}`);
+} else {
+  console.log(`[IDENTITY] Welcome back. Existing token loaded: ${userId}`);
+}
+
 const socket = io(BACKEND_URL, {
   transports: ["websocket", "polling"],
+  auth: {
+    userId,
+  },
 });
 
 // 🏁 TRIGGER 1: Synchronous Initial Draw on Application Boot
