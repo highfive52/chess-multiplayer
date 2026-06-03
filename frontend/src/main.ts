@@ -53,7 +53,7 @@ const socket = io(BACKEND_URL, {
 });
 
 // 🏁 TRIGGER 1: Synchronous Initial Draw & Auto-Join URL Parsing
-renderBoard(board, selectedSquare);
+renderBoard(board, selectedSquare, myRole);
 
 // Check if a room code is already embedded in the browser's address bar
 const urlParams = new URLSearchParams(window.location.search);
@@ -103,7 +103,7 @@ socket.on("disconnect", () => {
   }
 });
 
-// --- NEW: LOBBY CORE INTERACTION RULES ---
+// --- LOBBY CORE INTERACTION RULES ---
 
 // Action A: Create Match Button Clicked
 if (btnCreate) {
@@ -190,8 +190,8 @@ socket.on(
     if (lobbyScreen) lobbyScreen.classList.add("hidden");
     if (appContainer) appContainer.classList.remove("hidden");
 
-    // 4. Force a fresh screen paint
-    renderBoard(board, selectedSquare);
+    // 4. Force a fresh screen paint (pass viewer role so board orients correctly)
+    renderBoard(board, selectedSquare, myRole);
   }
 );
 
@@ -226,8 +226,8 @@ socket.on(
       }
     }
 
-    // 3. Repaint UI using master matrix layout
-    renderBoard(board, selectedSquare);
+    // 3. Repaint UI using master matrix layout (preserve viewer orientation)
+    renderBoard(board, selectedSquare, myRole);
   }
 );
 
@@ -301,6 +301,6 @@ if (boardContainer) {
       }
     }
 
-    renderBoard(board, selectedSquare);
+    renderBoard(board, selectedSquare, myRole);
   });
 }

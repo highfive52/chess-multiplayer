@@ -1,0 +1,40 @@
+```mermaid
+flowchart TD
+  subgraph Client
+    U[Player UI]
+    FUI[Frontend UI: Create or Join Room]
+    U --> FUI
+    FUI --> S1[Socket emit join_room]
+    S1 --> BE_handle_join[Backend handle_join_room]
+  end
+
+  subgraph Backend
+    BE_handle_join --> RedisGet[Redis GET room state]
+    RedisGet --> CheckExisting{Room exists}
+    CheckExisting -->|No| CreateState[create initial state]
+    CheckExisting -->|Yes| LoadState[load saved state]
+    CreateState --> RedisSet[Redis SET room state]
+    LoadState --> RedisSet
+    RedisSet --> EmitAssigned[emit assigned_role to caller]
+  end
+
+  EmitAssigned --> ClientReceiveAssigned[Frontend receives assigned_role payload]
+  ClientReceiveAssigned --> RenderBoard[renderBoard with myRole]
+
+  %% Move lifecycle
+  U --> ClickSelect[User clicks square or selects piece]
+  ClickSelect --> EmitPropose[Socket emit propose_move with from and to]
+  EmitPropose --> BE_propose_move[Backend handle_propose_move]
+  BE_propose_move --> FetchState[Redis GET room state]
+  FetchState --> Validate[Call is_legal_move]
+  Validate -->|Illegal| EmitRejected[emit move_rejected to caller]
+  EmitRejected --> ClientShowRejected[Frontend shows rejection message]
+  Validate -->|Legal| ApplyMove[Mutate board and update castling and turn]
+  ApplyMove --> SaveState[Redis SET room state]
+  SaveState --> EmitMoveExec[emit move_executed to room channel]
+  EmitMoveExec --> ClientsUpdate[Clients receive move_executed and render]
+
+  %% Spectator note
+  ClientsUpdate -->|all connected in room| Spectators[Spectators and players]
+  RenderBoard -->|local UI update| ClientsUpdate
+```
