@@ -23,36 +23,36 @@ asgi_app = socketio.ASGIApp(sio, app)
 
 def create_initial_board():
     return [
-        # Row 0: White Major Pieces
+        # 👑 Row 0: Black Major Pieces
         [
-            {"type": "r", "color": "w"},
-            {"type": "n", "color": "w"},
-            {"type": "b", "color": "w"},
-            {"type": "k", "color": "w"},
-            {"type": "q", "color": "w"},
-            {"type": "b", "color": "w"},
-            {"type": "n", "color": "w"},
-            {"type": "r", "color": "w"},
+            {"type": "r", "color": "b"},  # 0 (a8)
+            {"type": "n", "color": "b"},  # 1 (b8)
+            {"type": "b", "color": "b"},  # 2 (c8)
+            {"type": "q", "color": "b"},  # 3 (d8) ◄ Queen on her own color
+            {"type": "k", "color": "b"},  # 4 (e8) ◄ King on e-file
+            {"type": "b", "color": "b"},  # 5 (f8)
+            {"type": "n", "color": "b"},  # 6 (g8)
+            {"type": "r", "color": "b"},  # 7 (h8)
         ],
-        # Row 1: White Pawns
-        [{"type": "p", "color": "w"} for _ in range(8)],
-        # Rows 2-5: Empty Spaces
-        [None] * 8,
-        [None] * 8,
-        [None] * 8,
-        [None] * 8,
-        # Row 6: Black Pawns
+        # ♟️ Row 1: Black Pawns
         [{"type": "p", "color": "b"} for _ in range(8)],
-        # Row 7: Black Major Pieces
+        # 🟩 Rows 2-5: Empty Midground Squares
+        [None] * 8,
+        [None] * 8,
+        [None] * 8,
+        [None] * 8,
+        # ♟️ Row 6: White Pawns
+        [{"type": "p", "color": "w"} for _ in range(8)],
+        # 👑 Row 7: White Major Pieces
         [
-            {"type": "r", "color": "b"},
-            {"type": "n", "color": "b"},
-            {"type": "b", "color": "b"},
-            {"type": "k", "color": "b"},
-            {"type": "q", "color": "b"},
-            {"type": "b", "color": "b"},
-            {"type": "n", "color": "b"},
-            {"type": "r", "color": "b"},
+            {"type": "r", "color": "w"},  # 0 (a1)
+            {"type": "n", "color": "w"},  # 1 (b1)
+            {"type": "b", "color": "w"},  # 2 (c1)
+            {"type": "q", "color": "w"},  # 3 (d1) ◄ Queen on her own color
+            {"type": "k", "color": "w"},  # 4 (e1) ◄ King on e-file
+            {"type": "b", "color": "w"},  # 5 (f1)
+            {"type": "n", "color": "w"},  # 6 (g1)
+            {"type": "r", "color": "w"},  # 7 (h1)
         ],
     ]
 
@@ -276,7 +276,7 @@ async def handle_propose_move(sid, data):
 
         # King Castling Slide Check
         if p_type == "k" and abs(t_col - f_col) == 2:
-            home_rank = 0 if p_color == "w" else 7
+            home_rank = 7 if p_color == "w" else 0
             is_kingside = t_col > f_col
 
             old_rook_col = 7 if is_kingside else 0
@@ -315,7 +315,7 @@ async def handle_propose_move(sid, data):
             f"[CONTEXT] {opponent_color} King placed into Check inside room {room_code}"
         )
 
-        # Test if the checked player can legally move anywhere
+        # Test if the checked player can legally move anywhere (Checkmate)
         if not has_legal_moves(
             game_state["board"], opponent_color, game_state["castling_rights"]
         ):
@@ -324,6 +324,14 @@ async def handle_propose_move(sid, data):
             print(f"[CHECKMATE] Room {room_code} finished. Winner: {player_color}")
     else:
         game_state["check_status"] = None
+
+        # 🔄 FIX: Handle Stalemate Draws when player has zero moves left out of check
+        if not has_legal_moves(
+            game_state["board"], opponent_color, game_state["castling_rights"]
+        ):
+            game_state["status"] = "completed"
+            game_state["winner"] = "draw"
+            print(f"[STALEMATE] Room {room_code} finished in a draw.")
 
     # 5. Advance Turn only if match continues active
     if game_state["status"] == "active":

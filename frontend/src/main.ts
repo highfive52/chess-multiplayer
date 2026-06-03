@@ -198,6 +198,11 @@ socket.on(
 );
 
 // AUTHORITATIVE SNAPSHOT LISTENER WITH RULE ENFORCEMENT
+socket.on("move_rejected", (payload: { reason: string }) => {
+  console.warn("⚠️ Move was rejected by the server engine:", payload.reason);
+  alert(`Illegal Move: ${payload.reason}`);
+});
+
 socket.on(
   "move_executed",
   (payload: {

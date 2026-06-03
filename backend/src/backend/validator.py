@@ -1,3 +1,4 @@
+# backend/src/backend/validator.py
 import copy
 
 
@@ -40,15 +41,17 @@ def is_legal_move(board, f_row, f_col, t_row, t_col, castling_rights=None) -> bo
 
     # PAWN: Basic forward movement (Directional)
     if p_type == "p":
-        direction = 1 if p_color == "w" else -1
+        # 🔄 FIX: White moves UP the array (-1), Black moves DOWN the array (+1)
+        direction = -1 if p_color == "w" else 1
 
         # Standard 1-square forward move to an empty square
         if col_diff == 0 and row_diff == direction and not target:
             return True
 
         # Initial 2-square forward move from starting ranks
-        is_starting_rank = (f_row == 1 and p_color == "w") or (
-            f_row == 6 and p_color == "b"
+        # 🔄 FIX: Realign starting row positions to match your board schema
+        is_starting_rank = (f_row == 6 and p_color == "w") or (
+            f_row == 1 and p_color == "b"
         )
         if col_diff == 0 and row_diff == 2 * direction and is_starting_rank:
             # Ensure the intermediate square is also clear
@@ -133,7 +136,7 @@ def is_legal_move(board, f_row, f_col, t_row, t_col, castling_rights=None) -> bo
             if not castling_rights:
                 return False  # Safe fallback if rights aren't provided
 
-            home_rank = 0 if p_color == "w" else 7
+            home_rank = 7 if p_color == "w" else 0
             if f_row != home_rank:
                 return False
 

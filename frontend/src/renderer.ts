@@ -22,8 +22,8 @@ export function renderBoard(
   //   the board 180 degrees so black pieces appear at the bottom and
   //   also move "up" from the black player's perspective.
   const base = Array.from({ length: 8 }, (_, i) => i);
-  const rows = viewer === "white" ? [...base].reverse() : base;
-  const cols = viewer === "white" ? [...base].reverse() : base;
+  const rows = viewer === "black" ? [...base].reverse() : base;
+  const cols = base;
 
   for (const row of rows) {
     for (const col of cols) {
