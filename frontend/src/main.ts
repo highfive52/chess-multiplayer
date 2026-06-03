@@ -12,6 +12,7 @@ console.log("TypeScript environment up and running!");
 const board: BoardMatrix = createInitialBoard();
 let selectedSquare: Position | null = null;
 let myRole: "white" | "black" | "spectator" | null = null;
+let currentMatchStatus: "active" | "completed" = "active";
 
 // Grab our structural screens
 const lobbyScreen = document.getElementById("lobby-screen");
@@ -20,7 +21,7 @@ const appContainer = document.getElementById("app-container");
 // Grab our dynamic HUD elements
 const identityEl = document.getElementById("player-identity");
 const turnEl = document.getElementById("turn-indicator");
-const roomDisplay = document.getElementById("room-display"); // Added for Milestone 3
+const roomDisplay = document.getElementById("room-display");
 
 // Grab lobby control elements
 const btnCreate = document.getElementById("btn-create") as HTMLButtonElement;
@@ -37,7 +38,6 @@ const BACKEND_URL =
 let userId = localStorage.getItem("chess_user_id");
 
 if (!userId) {
-  // 2. Generate a fresh, standard unique token if none is found
   userId = crypto.randomUUID();
   localStorage.setItem("chess_user_id", userId);
   console.log(`[IDENTITY] Fresh token generated & saved: ${userId}`);
@@ -59,21 +59,15 @@ renderBoard(board, selectedSquare, myRole);
 const urlParams = new URLSearchParams(window.location.search);
 const roomFromUrl = urlParams.get("room")?.trim().toUpperCase();
 
-// If a valid 4-character room code exists in the URL, auto-submit it immediately
 if (roomFromUrl && roomFromUrl.length === 4) {
   console.log(`[BOOT] Detected room parameter in URL. Auto-joining: ${roomFromUrl}`);
-
-  // Optional: Update the input field text just to give visual feedback before it hides
   if (inputRoomCode) inputRoomCode.value = roomFromUrl;
-
-  // Fire the network join request automatically behind the scenes
   socket.emit("join_room", { roomId: roomFromUrl });
 }
 
 // --- TRIGGER 2: REMOTE NETWORK INPUTS (SOCKET LISTENERS) ---
 const loaderEl = document.getElementById("server-loader");
 
-// When the handshake completes perfectly, drop the loader blocker overlay
 socket.on("connect", () => {
   console.log(`⚡ Connected to backend at ${BACKEND_URL}! ID:`, socket.id);
 
@@ -94,7 +88,6 @@ socket.on("connect", () => {
   }
 });
 
-// If the connection drops mid-game, pop the loader back up
 socket.on("disconnect", () => {
   console.warn("❌ Disconnected from cloud server.");
   if (loaderEl) {
@@ -105,7 +98,6 @@ socket.on("disconnect", () => {
 
 // --- LOBBY CORE INTERACTION RULES ---
 
-// Action A: Create Match Button Clicked
 if (btnCreate) {
   btnCreate.addEventListener("click", () => {
     const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -115,7 +107,6 @@ if (btnCreate) {
     }
     console.log(`[LOBBY] Requesting creation of Room: ${randomCode}`);
 
-    // Safely update the search parameters using the native URL API
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set("room", randomCode);
     window.history.pushState({ path: currentUrl.toString() }, "", currentUrl.toString());
@@ -124,7 +115,6 @@ if (btnCreate) {
   });
 }
 
-// Action B: Join Match Button Clicked
 if (btnJoin && inputRoomCode) {
   btnJoin.addEventListener("click", () => {
     const enteredCode = inputRoomCode.value.trim().toUpperCase();
@@ -134,7 +124,6 @@ if (btnJoin && inputRoomCode) {
     }
     console.log(`[LOBBY] Requesting entry to Room: ${enteredCode}`);
 
-    // Safely update the search parameters using the native URL API
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set("room", enteredCode);
     window.history.pushState({ path: currentUrl.toString() }, "", currentUrl.toString());
@@ -147,12 +136,16 @@ if (btnJoin && inputRoomCode) {
 socket.on(
   "assigned_role",
   (payload: {
-    room_id: string; // Added for Milestone 3 room tracking
+    room_id: string;
     color: "white" | "black" | "spectator";
     board: BoardMatrix;
     current_turn: string;
+    status: "active" | "completed"; // ◄ NEW FIELD
+    winner: string | null; // ◄ NEW FIELD
+    check_status: "white" | "black" | null; // ◄ NEW FIELD
   }) => {
     myRole = payload.color;
+    currentMatchStatus = payload.status; // ◄ Capture initial or historical match state
 
     // 1. Establish room code and identity HUD elements
     if (roomDisplay) {
@@ -171,22 +164,31 @@ socket.on(
       board[r] = [...payload.board[r]];
     }
 
-    // 3. Update the Turn HUD to reflect the active player
+    // 3. Update the Turn HUD to reflect the active player or historical game-over
     if (turnEl) {
-      const isMyTurn = myRole === payload.current_turn;
-      if (myRole === "spectator") {
-        turnEl.textContent = `Spectating - ${payload.current_turn.toUpperCase()}'s Turn`;
-        turnEl.style.color = "#4b5563";
-      } else if (isMyTurn) {
-        turnEl.textContent = "YOUR TURN";
-        turnEl.style.color = "#16a34a";
+      if (payload.status === "completed") {
+        turnEl.textContent = payload.winner
+          ? `CHECKMATE - ${payload.winner.toUpperCase()} WINS! 🎉`
+          : "GAME OVER - DRAW";
+        turnEl.style.color = "#a855f7";
       } else {
-        turnEl.textContent = "OPPONENT'S TURN";
-        turnEl.style.color = "#dc2626";
+        const isMyTurn = myRole === payload.current_turn;
+        const checkSuffix = payload.check_status === payload.current_turn ? " (IN CHECK)" : "";
+
+        if (myRole === "spectator") {
+          turnEl.textContent = `Spectating - ${payload.current_turn.toUpperCase()}'s Turn${checkSuffix}`;
+          turnEl.style.color = "#4b5563";
+        } else if (isMyTurn) {
+          turnEl.textContent = `YOUR TURN${checkSuffix}`;
+          turnEl.style.color = payload.check_status ? "#ea580c" : "#16a34a";
+        } else {
+          turnEl.textContent = `OPPONENT'S TURN${checkSuffix}`;
+          turnEl.style.color = "#dc2626";
+        }
       }
     }
 
-    // NEW MILESTONE 3 TOGGLE: Transition views from Lobby to Active Game Room
+    // Transition views from Lobby to Active Game Room
     if (lobbyScreen) lobbyScreen.classList.add("hidden");
     if (appContainer) appContainer.classList.remove("hidden");
 
@@ -195,38 +197,59 @@ socket.on(
   }
 );
 
-// ONE AUTHORITATIVE SNAPSHOT LISTENER
+// AUTHORITATIVE SNAPSHOT LISTENER WITH RULE ENFORCEMENT
 socket.on(
   "move_executed",
   (payload: {
     board: BoardMatrix;
     current_turn: string;
+    status: "active" | "completed";
+    winner: string | null;
+    check_status: "white" | "black" | null;
     last_move: { from: { row: number; col: number }; to: { row: number; col: number } } | null;
   }) => {
     console.log("📥 Authoritative state snapshot arrived from server!");
+    currentMatchStatus = payload.status;
 
     // 1. Overwrite local memory array references entirely
     for (let r = 0; r < 8; r++) {
       board[r] = [...payload.board[r]];
     }
 
-    // 2. Update Dynamic Turn HUD Indicator text and style
+    // 2. Handle Game Status & Turn HUD Indicator text and style
     if (turnEl) {
-      const isMyTurn = myRole === payload.current_turn;
+      if (payload.status === "completed") {
+        const winMessage = payload.winner
+          ? `CHECKMATE - ${payload.winner.toUpperCase()} WINS! 🎉`
+          : "GAME OVER - DRAW";
 
-      if (myRole === "spectator") {
-        turnEl.textContent = `Spectating - ${payload.current_turn.toUpperCase()}'s Turn`;
-        turnEl.style.color = "#4b5563";
-      } else if (isMyTurn) {
-        turnEl.textContent = "YOUR TURN";
-        turnEl.style.color = "#16a34a"; // Alert Green
+        turnEl.textContent = winMessage;
+        turnEl.style.color = "#a855f7"; // Elegant Victory Purple
+
+        setTimeout(() => alert(winMessage), 50);
       } else {
-        turnEl.textContent = "OPPONENT'S TURN";
-        turnEl.style.color = "#dc2626"; // Alert Red
+        const isMyTurn = myRole === payload.current_turn;
+        const checkSuffix = payload.check_status === payload.current_turn ? " (IN CHECK)" : "";
+
+        if (myRole === "spectator") {
+          turnEl.textContent = `Spectating - ${payload.current_turn.toUpperCase()}'s Turn${checkSuffix}`;
+          turnEl.style.color = "#4b5563";
+        } else if (isMyTurn) {
+          turnEl.textContent = `YOUR TURN${checkSuffix}`;
+          turnEl.style.color = payload.check_status ? "#ea580c" : "#16a34a";
+        } else {
+          turnEl.textContent = `OPPONENT'S TURN${checkSuffix}`;
+          turnEl.style.color = "#dc2626";
+        }
       }
     }
 
-    // 3. Repaint UI using master matrix layout (preserve viewer orientation)
+    // 3. Reset local click selections cleanly if the game is over to freeze interactions
+    if (payload.status === "completed") {
+      selectedSquare = null; // Set to type safe null instead of invalid index markers
+    }
+
+    // 4. Repaint UI using master matrix layout (preserve viewer orientation)
     renderBoard(board, selectedSquare, myRole);
   }
 );
@@ -235,6 +258,11 @@ socket.on(
 const boardContainer = document.getElementById("chess-board");
 if (boardContainer) {
   boardContainer.addEventListener("click", (event) => {
+    // 🛑 FREEZE INTERACTION GUARD
+    if (currentMatchStatus === "completed") {
+      console.log("[BOARD FROZEN] Click ignored. Match has concluded via checkmate.");
+      return;
+    }
     const targetSquare = (event.target as HTMLElement).closest(".square") as HTMLElement;
     if (!targetSquare) return;
 
@@ -247,7 +275,6 @@ if (boardContainer) {
     // CASE 1: No piece is currently selected (Attempting to lift a piece)
     if (selectedSquare === null) {
       if (clickedPiece) {
-        // 🔒 SAFETY CHECK: Map frontend character flags ("w"/"b") to identity role
         const pieceColorMapped = clickedPiece.color === "w" ? "white" : "black";
 
         if (myRole === "spectator") {
@@ -262,7 +289,6 @@ if (boardContainer) {
           return;
         }
 
-        // Select the piece safely
         selectedSquare = { row, col };
         console.log(`Selected piece: ${clickedPiece.color}${clickedPiece.type.toUpperCase()}`);
       } else {
@@ -290,7 +316,6 @@ if (boardContainer) {
             )} to ${toAlgebraic(row, col)}`
           );
 
-          // Broadcast proposal up to server referee
           socket.emit("propose_move", {
             from: { row: fromRow, col: fromCol },
             to: { row, col },

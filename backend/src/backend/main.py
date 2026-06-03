@@ -3,7 +3,13 @@ import os
 from fastapi import FastAPI, Response
 import socketio
 import redis.asyncio as aioredis
-from backend.validator import is_legal_move
+from backend.validator import (
+    is_legal_move,
+    find_king,
+    is_square_attacked,
+    causes_self_check,
+    has_legal_moves,
+)
 
 # 1. Configure the Redis connection string (Defaulting to Docker localhost)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -72,9 +78,13 @@ def create_initial_state():
                 "h_rook_has_moved": False,
             },
         },
+        "status": "active",  # "active" | "completed"
+        "winner": None,  # None | "white" | "black" | "draw"
+        "check_status": None,  # None | "white" | "black"
     }
 
 
+# --- API HTTP LAYER ---
 @app.get("/")
 async def root():
     return {"status": "online", "service": "chess-multiplayer-backend"}
@@ -105,11 +115,10 @@ async def connect(sid, environ, auth):
         )
         return False
 
-    # Cache the user identity, initialize room as None until they explicitly join a room
     await sio.save_session(sid, {"user_id": user_id, "room_id": None})
 
 
-# --- NEW LOBBY CHANNEL ORCHESTRATION ---
+# --- LOBBY CHANNEL ORCHESTRATION ---
 @sio.on("join_room")
 async def handle_join_room(sid, data):
     room_code = data.get("roomId", "").strip().upper()
@@ -119,18 +128,13 @@ async def handle_join_room(sid, data):
 
     redis_room_key = f"room:{room_code}"
 
-    # Extract user identity from socket's session storage
     session = await sio.get_session(sid)
     user_id = session.get("user_id")
 
-    # Bind this socket's session to the room code
     await sio.save_session(sid, {"user_id": user_id, "room_id": room_code})
-
-    # Tell Socket.io to subscribe this connection to the target isolated room channel
     await sio.enter_room(sid, redis_room_key)
     print(f"[ROOM JOIN] SID [{sid}] entered network channel: {redis_room_key}")
 
-    # Fetch existing match state, or provision a fresh game room if it's the first time
     raw_state = await redis.get(redis_room_key)
     if not raw_state:
         game_state = create_initial_state()
@@ -138,7 +142,6 @@ async def handle_join_room(sid, data):
     else:
         game_state = json.loads(raw_state)
 
-    # Dedicated Seat Assignment scoped directly within this room's state context
     players = game_state["players"]
 
     if players["white"] == user_id:
@@ -165,10 +168,8 @@ async def handle_join_room(sid, data):
             f"[SLOT SPECTATE] User [{user_id}] joined Room [{room_code}] as Spectator."
         )
 
-    # Commit the mutated state back to the Redis key store
     await redis.set(redis_room_key, json.dumps(game_state))
 
-    # Target view hydration strictly to the caller link
     await sio.emit(
         "assigned_role",
         {
@@ -176,6 +177,9 @@ async def handle_join_room(sid, data):
             "color": role,
             "board": game_state["board"],
             "current_turn": game_state["current_turn"],
+            "status": game_state.get("status", "active"),
+            "winner": game_state.get("winner", None),
+            "check_status": game_state.get("check_status", None),
         },
         to=sid,
     )
@@ -184,7 +188,6 @@ async def handle_join_room(sid, data):
 # --- VALIDATION & ISOLATED REAL-TIME BROADCAST ---
 @sio.on("propose_move")
 async def handle_propose_move(sid, data):
-    # Pull current room credentials from socket session cache
     session = await sio.get_session(sid)
     if not session:
         return
@@ -198,14 +201,23 @@ async def handle_propose_move(sid, data):
 
     redis_room_key = f"room:{room_code}"
 
-    # 1. FETCH: Look up authoritative match state from Redis
+    # 1. FETCH Authoritative state
     raw_state = await redis.get(redis_room_key)
     if not raw_state:
         print(f"[ERROR] Active match state missing for Room {room_code}!")
         return
     game_state = json.loads(raw_state)
 
-    # 2. Identity & Turn Validation against room-specific seats
+    # 🛑 CHECKPOINT A: Block matching on completed timelines
+    if game_state.get("status") == "completed":
+        await sio.emit(
+            "move_rejected",
+            {"reason": "The game has already ended in checkmate."},
+            to=sid,
+        )
+        return
+
+    # 2. Identity & Turn Validation
     players = game_state["players"]
     player_color = (
         "white"
@@ -217,15 +229,16 @@ async def handle_propose_move(sid, data):
 
     if player_color is None or player_color != game_state["current_turn"]:
         print(
-            f"[REJECTED] Room [{room_code}] - Move out of turn or unauthorized from color: {player_color}"
+            f"[REJECTED] Room [{room_code}] - Move out of turn from color: {player_color}"
         )
         await sio.emit("move_rejected", {"reason": "Not your turn"}, to=sid)
         return
 
+    opponent_color = "black" if player_color == "white" else "white"
+
     # 3. Extract coordinates
     move_from = data.get("from")
     move_to = data.get("to")
-
     f_row, f_col = move_from["row"], move_from["col"]
     t_row, t_col = move_to["row"], move_to["col"]
 
@@ -233,13 +246,29 @@ async def handle_propose_move(sid, data):
     if not is_legal_move(
         game_state["board"], f_row, f_col, t_row, t_col, game_state["castling_rights"]
     ):
-        print(
-            f"[REJECTED] Geometric Rule Violation in Room [{room_code}] from [{f_row}][{f_col}] to [{t_row}][{t_col}]"
-        )
+        print(f"[REJECTED] Geometric Rule Violation in Room [{room_code}]")
         await sio.emit("move_rejected", {"reason": "Illegal chess movement"}, to=sid)
         return
 
-    # 4. State Mutation
+    # 🛑 CHECKPOINT B: Block matching on Self-Exposing King moves (Illegal check avoidance)
+    if causes_self_check(
+        game_state["board"],
+        player_color,
+        f_row,
+        f_col,
+        t_row,
+        t_col,
+        game_state["castling_rights"],
+    ):
+        print(
+            f"[REJECTED] Check Rule Violation: User leaves King exposed inside Room [{room_code}]"
+        )
+        await sio.emit(
+            "move_rejected", {"reason": "Move leaves your king in check"}, to=sid
+        )
+        return
+
+    # 4. State Mutation (Move verified safe)
     moving_piece = game_state["board"][f_row][f_col]
     if moving_piece:
         p_type = moving_piece["type"]
@@ -270,26 +299,57 @@ async def handle_propose_move(sid, data):
         game_state["board"][t_row][t_col] = moving_piece
         game_state["board"][f_row][f_col] = None
 
-    # 5. Advance Turn
-    game_state["current_turn"] = "black" if player_color == "white" else "white"
+    # 🛑 CHECKPOINT C: Post-Move Check & Checkmate Evaluation
+    opp_king_pos = find_king(game_state["board"], opponent_color)
+    is_opp_in_check = is_square_attacked(
+        game_state["board"],
+        opp_king_pos[0],
+        opp_king_pos[1],
+        player_color,
+        game_state["castling_rights"],
+    )
 
-    # 6. SAVE: Lock mutated data framework back down to Redis
+    if is_opp_in_check:
+        game_state["check_status"] = opponent_color
+        print(
+            f"[CONTEXT] {opponent_color} King placed into Check inside room {room_code}"
+        )
+
+        # Test if the checked player can legally move anywhere
+        if not has_legal_moves(
+            game_state["board"], opponent_color, game_state["castling_rights"]
+        ):
+            game_state["status"] = "completed"
+            game_state["winner"] = player_color
+            print(f"[CHECKMATE] Room {room_code} finished. Winner: {player_color}")
+    else:
+        game_state["check_status"] = None
+
+    # 5. Advance Turn only if match continues active
+    if game_state["status"] == "active":
+        game_state["current_turn"] = opponent_color
+
+    # 6. SAVE Authoritative payload
     await redis.set(redis_room_key, json.dumps(game_state))
 
-    # 7. BROADCAST: Confine event stream entirely to the channel members
-    print(f"[SOCKET] Broadcasting authoritative update to room pipe: {redis_room_key}")
+    # 7. BROADCAST updated status array downstream
+    print(
+        f"[SOCKET] Broadcasting match validation update to room pipe: {redis_room_key}"
+    )
     await sio.emit(
         "move_executed",
         {
             "board": game_state["board"],
             "current_turn": game_state["current_turn"],
+            "status": game_state["status"],
+            "winner": game_state["winner"],
+            "check_status": game_state["check_status"],
             "last_move": {"from": move_from, "to": move_to},
         },
-        to=redis_room_key,  # Directs traffic exclusively to connections in this room
+        to=redis_room_key,
     )
 
 
 @sio.event
 async def disconnect(sid):
-    # Session state clears from transit layer, but seats remain preserved in Redis
     print(f"[DISCONNECT] Client transport link severed for SID: {sid}")
