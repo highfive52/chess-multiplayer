@@ -17,16 +17,26 @@ repos:
         files: ^frontend/
         additional_dependencies: ['prettier@3.1.0']
 
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v8.56.0
+  # --- TESTS ---
+  - repo: local
     hooks:
-      - id: eslint       # Frontend Linter (Catches TS bugs)
-        # Matches any .ts or .tsx file anywhere in the repo, ignoring slash directions
-        files: \.(ts|tsx)$
-        # Tells ESLint to look into the frontend folder for configuration context
-        args: [--config, frontend/.eslintrc.json, --prefix, frontend] 
+      - id: pytest
+        name: pytest
+        entry: pytest -q
+        language: python
+        pass_filenames: false
         additional_dependencies:
-          - eslint@8.56.0
-          - typescript@5.3.3
-          - "@typescript-eslint/parser@6.14.0"
-          - "@typescript-eslint/eslint-plugin@6.14.0"
+          - pytest>=7.0.0
+          - fastapi>=0.136.3
+          - python-socketio>=5.16.2
+          - redis>=8.0.0
+        files: ^backend/
+  # --- FRONTEND LINT (uses project local node_modules) ---
+  - repo: local
+    hooks:
+      - id: eslint-frontend
+        name: ESLint frontend
+        entry: npm --prefix frontend run lint --silent
+        language: system
+        pass_filenames: false
+        always_run: true

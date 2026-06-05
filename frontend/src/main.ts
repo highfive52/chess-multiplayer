@@ -61,7 +61,35 @@ const socket = io(BACKEND_URL, {
   auth: { userId },
 });
 
+// DOM refs for connection UI
+const btnRetry = document.getElementById("btn-retry") as HTMLButtonElement | null;
+const btnCopyLink = document.getElementById("btn-copy-link") as HTMLButtonElement | null;
+const connStatus = document.getElementById("conn-status") as HTMLElement | null;
+const btnCreateEl = () => document.getElementById("btn-create") as HTMLButtonElement | null;
+const btnJoinEl = () => document.getElementById("btn-join") as HTMLButtonElement | null;
+
+// Toast utilities
+function showToast(msg: string, ms = 1800) {
+  let root = document.getElementById("toast-root");
+  if (!root) {
+    root = document.createElement("div");
+    root.id = "toast-root";
+    document.body.appendChild(root);
+  }
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = msg;
+  root.appendChild(t);
+  setTimeout(() => {
+    t.remove();
+  }, ms);
+}
+
 // --- SCREEN VIEW ROUTING CONTROLLERS ---
+function setRetryVisible(visible: boolean) {
+  if (!btnRetry) return;
+  btnRetry.style.display = visible ? "inline-block" : "none";
+}
 function showLobby() {
   if (serverLoader) serverLoader.classList.add("hidden");
   if (appContainer) appContainer.classList.add("hidden");
@@ -118,7 +146,9 @@ document.addEventListener("DOMContentLoaded", () => {
         alert("Not connected to backend. Trying to reconnect...");
         try {
           socket.connect();
-        } catch (e) {}
+        } catch (e) {
+          console.debug(e);
+        }
         return;
       }
       socket.emit("create_room");
@@ -138,6 +168,36 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Show lobby immediately so buttons are usable while socket connects
   showLobby();
+
+  // Wire retry and copy-link if present
+  if (btnRetry) {
+    btnRetry.addEventListener("click", () => {
+      if (socket.connected) {
+        showToast("Already connected");
+        return;
+      }
+      showToast("Reconnecting...");
+      try {
+        socket.connect();
+      } catch (e) {
+        console.warn(e);
+      }
+    });
+    // initial visibility based on current socket state
+    setRetryVisible(!socket.connected);
+  }
+
+  if (btnCopyLink) {
+    btnCopyLink.addEventListener("click", async () => {
+      const url = window.location.href;
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast("Link copied to clipboard");
+      } catch (e) {
+        showToast("Unable to copy link");
+      }
+    });
+  }
 });
 
 // --- WAKEUP OVERLAY DISMISSAL ENGINE ---
@@ -150,6 +210,41 @@ socket.on("connect", () => {
   if (!roomFromUrl || roomFromUrl.length !== 4) {
     showLobby();
   }
+  // Update connection UI
+  if (connStatus) {
+    connStatus.textContent = "Connected";
+    connStatus.className = "conn-status connected";
+  }
+  const createBtn = btnCreateEl();
+  if (createBtn) createBtn.disabled = false;
+  const joinBtn = btnJoinEl();
+  if (joinBtn) joinBtn.disabled = false;
+  showToast("Connected");
+  // hide retry button when connected
+  setRetryVisible(false);
+});
+
+socket.on("disconnect", (reason) => {
+  if (connStatus) {
+    connStatus.textContent = "Disconnected";
+    connStatus.className = "conn-status disconnected";
+  }
+  const createBtn = btnCreateEl();
+  if (createBtn) createBtn.disabled = true;
+  const joinBtn = btnJoinEl();
+  if (joinBtn) joinBtn.disabled = true;
+  console.log("Socket disconnected:", reason);
+  showToast("Disconnected from server");
+  // show retry button when disconnected
+  setRetryVisible(true);
+});
+
+socket.on("connect_error", (err) => {
+  if (connStatus) {
+    connStatus.textContent = "Connecting";
+    connStatus.className = "conn-status connecting";
+  }
+  console.warn("Connect error:", err);
 });
 
 // Setup Initial Render Board Frame State
@@ -231,7 +326,12 @@ socket.on("move_executed", (payload) => {
   }
 });
 
-function updateTurnHUD(payload: any) {
+function updateTurnHUD(payload: {
+  status: string;
+  winner?: string;
+  current_turn: string;
+  check_status?: string;
+}) {
   if (!turnEl) return;
   if (payload.status === "completed") {
     turnEl.textContent = payload.winner
@@ -338,7 +438,9 @@ if (boardContainer) {
           // Hide the original piece so it appears to be picked up
           try {
             activePieceImgOriginal.style.visibility = "hidden";
-          } catch (e) {}
+          } catch (e) {
+            console.debug(e);
+          }
           boardContainer.setPointerCapture(event.pointerId);
           isDragging = true;
           activeDragPiece = dragClone;
@@ -410,14 +512,18 @@ if (boardContainer) {
     if (dragClone && dragClone.parentElement) {
       try {
         dragClone.parentElement.removeChild(dragClone);
-      } catch (e) {}
+      } catch (e) {
+        console.debug(e);
+      }
     }
     dragClone = null;
     // Restore original piece visibility if it was hidden
     if (activePieceImgOriginal) {
       try {
         activePieceImgOriginal.style.visibility = "";
-      } catch (e) {}
+      } catch (e) {
+        console.debug(e);
+      }
     }
     if (activeDragPiece) {
       activeDragPiece.classList.remove("is-dragging");

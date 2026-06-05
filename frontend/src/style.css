@@ -346,3 +346,77 @@ body {
   font-size: 0.85rem;
   margin-top: 8px;
 }
+
+/* HUD Controls */
+.hud-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.conn-status {
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.conn-status.connected {
+  background: #052e16;
+  color: #86efac;
+  border: 1px solid #073b18;
+}
+.conn-status.connecting {
+  background: #1f2937;
+  color: #fbbf24;
+  border: 1px solid #334155;
+}
+.conn-status.disconnected {
+  background: #2b0f0f;
+  color: #fecaca;
+  border: 1px solid #4c1f1f;
+}
+.btn-small {
+  background: #0b1220;
+  color: #cfe3f3;
+  border: 1px solid #27455a;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn-small:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Toast notifications */
+#toast-root {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 11000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  background: #0b1220;
+  color: #e6eef6;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #27455a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* Bottom action bar below board */
+  .bottom-bar {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    align-items: center;
+    margin: 12px 0 20px 0;
+  }
+  .bottom-bar .btn-small {
+    min-width: 110px;
+  }
+  .bottom-bar .btn-secondary {
+    min-width: 110px;
+  }
+}

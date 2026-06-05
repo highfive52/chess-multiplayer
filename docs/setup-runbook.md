@@ -6,31 +6,29 @@
 2. **`cd frontend`** *(Move into the folder first so all following commands work)*
 3. `npm install`
 4. `npm install socket.io-client`
-5. Clean up boilerplate:
-* Open `frontend/src/main.ts`, select everything, and delete it so you have a blank canvas.
-* Delete `frontend/src/counter.ts` entirely.
+5. Clean up boilerplate (optional):
+   - Open `frontend/src/main.ts` and replace with your application boot code.
+   - Remove unused example files such as `frontend/src/counter.ts` if present.
 
+6. Install frontend dev tools:
 
-6. `npm install --save-dev eslint prettier eslint-config-prettier typescript-eslint @eslint/js`
-* `--save-dev` specifies these are only dev dependencies.
-* `typescript-eslint` and `@eslint/js` are required for the new ESLint Flat Config engine.
+```bash
+npm install --save-dev eslint prettier eslint-config-prettier typescript-eslint @eslint/js typescript
+```
 
+7. Update `frontend/package.json` to run lint only against your source directory:
 
-7. Update `frontend/package.json` to include the explicit lint execution script:
 ```json
 "scripts": {
   "dev": "vite",
   "build": "tsc && vite build",
-  "lint": "eslint .",
+  "lint": "eslint src",
   "preview": "vite preview"
 }
-
 ```
 
-
 8. Tool configs:
-* Create `frontend/.prettierrc`
-
+- Create `frontend/.prettierrc` with your formatting preferences:
 
 ```json
 {
@@ -40,244 +38,118 @@
   "printWidth": 100,
   "tabWidth": 2
 }
-
 ```
 
-
-* Create `frontend/eslint.config.js` *(Note the new file extension and modular layout)*
-
+- Use an ESLint flat config file. Create `frontend/eslint.config.cjs` and include an `ignores` entry to prevent linting built assets (`.eslintignore` is deprecated):
 
 ```javascript
-import js from "@eslint/js";
-import tseslint from "typescript-eslint";
-
-export default tseslint.config(
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
-  {
-    languageOptions: {
-      ecmaVersion: "latest",
-      sourceType: "module",
-      globals: {
-        browser: true,
-      },
-    },
-    rules: {
-      "no-unused-vars": "warn",
-      "no-console": "off",
-      "@typescript-eslint/no-unused-vars": ["warn"],
-    },
+module.exports = {
+  ignores: ['dist/**', '.cache/**', 'node_modules/**'],
+  languageOptions: {
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+    globals: { browser: true },
   },
-);
-
+  // example ruleset (adjust to taste)
+  rules: {
+    'no-unused-vars': 'warn',
+    'no-console': 'off',
+  },
+};
 ```
 
-
+Notes:
+- We limit ESLint to `src` in `package.json` to avoid scanning `dist` files produced by the build.
+- If you previously used a `.eslintignore`, prefer moving those patterns to the `ignores` array in `eslint.config.cjs`.
 
 ---
 
 ## Backend Setup Checklist
 
-1. **Navigate to the backend directory:**
-```bash
-# From your repository root:
-mkdir backend
-cd backend
+1. **Create and activate a venv (recommended):**
 
+```powershell
+# From repository root
+python -m venv backend\.venv
+.\backend\.venv\Scripts\Activate.ps1
+pip install -r backend/requirements.txt
 ```
 
+2. **If you scaffolded with `uv`, you may already have a pyproject and venv.**
+   - `uv` is a helpful toolchain, but `concurrently` (npm) does not activate venvs automatically.
 
-2. **Initialize the Python project using `uv`:**
-```bash
-uv init --app --package --python 3.12
+3. **Install backend dependencies (if not already present):**
 
+```powershell
+pip install fastapi uvicorn python-socketio
 ```
 
+4. **Run the backend for development:**
 
-> This automatically generates a modern `pyproject.toml`, a virtual environment, and a boilerplate script.
+- With the venv activated:
 
-
-3. **Add the backend dependencies:**
-```bash
-uv add fastapi uvicorn python-socketio
-
+```powershell
+python -m uvicorn backend.main:asgi_app --reload --port 8000
 ```
 
+- Or call the venv Python explicitly (useful when orchestrating from the repo root):
 
-> This instantly downloads and installs the server components and updates your `pyproject.toml`.
-
-
-4. **Add the testing dependencies (as development packages):**
-```bash
-uv add --dev pytest httpx
-
+```powershell
+backend\.venv\Scripts\python -m uvicorn backend.main:asgi_app --reload --port 8000
 ```
 
-
-> `httpx` allows `pytest` to make asynchronous testing requests to your FastAPI application.
-
-
-5. **Overwrite `backend/main.py` with your server code:**
-```python
-import uvicorn
-import socketio
-from fastapi import FastAPI, Response
-
-app = FastAPI()
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
-asgi_app = socketio.ASGIApp(sio, other_asgi_app=app)
-
-@app.get("/favicon.ico", include_in_schema=False)
-async def favicon():
-    return Response(status_code=204)
-
-@sio.event
-async def connect(sid, environ):
-    print(f"Client connected: {sid}")
-
-@sio.event
-async def disconnect(sid):
-    print(f"Client disconnected: {sid}")
-
-def main():
-    uvicorn.run(asgi_app, host="127.0.0.1", port=8000)
-
-if __name__ == "__main__":
-    main()
-
-```
-
-6. **Create a backend smoke test file:**
-* Create a file at `backend/tests/test_smoke.py`:
-
-```python
-def test_backend_health():
-    """Sanity check to verify the testing orchestrator executes cleanly."""
-    assert True
-
-```
-
-> Keeping an explicit smoke test guarantees your CI test environment won't exit with error code 5 due to an empty test suite.
-
-7. **Run the server locally to test:**
-```bash
-uv run python -m backend.main
-
-```
-
-Or update `pyproject.toml`:
-```toml
-[project.scripts]
-backend = "backend.main:main"
-
-```
-
-
-```bash
-uv run backend
-
-```
-
-To enable hot-reloading during development:
-```bash
-uv run uvicorn backend.main:asgi_app --reload
-
-```
+Notes:
+- Calling the venv's python (explicit path) in scripts allows `concurrently` to run the backend without activating the venv first.
+- You can also use `uv` if you prefer and have it on PATH, but be aware `concurrently` won't activate a venv for you.
 
 ---
 
 ## Local Pre-commit Tools Setup
 
-1. `uv tool install pre-commit` (from repo root)
-2. Create `.pre-commit-config.yaml` at the repository root:
-```yaml
-repos:
-  # --- PYTHON BACKEND TOOLS ---
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.0
-    hooks:
-      - id: ruff         # Python Linter
-        files: ^backend/
-      - id: ruff-format  # Python Formatter
-        files: ^backend/
+1. Ensure `pre-commit` is available (we use the `pre-commit` toolchain). If you used `uv`'s tooling, it may provide helpers; otherwise install pre-commit normally:
 
-  # --- TYPESCRIPT FRONTEND TOOLS ---
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.1.0
-    hooks:
-      - id: prettier     # Frontend Formatter
-        files: ^frontend/
-        additional_dependencies: ['prettier@3.1.0']
-
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v10.4.1
-    hooks:
-      - id: eslint       # Frontend Flat-Config Linter
-        files: ^frontend/
-        # Point directly to the new flat config file and context prefix
-        args: [--config, frontend/eslint.config.js, --prefix, frontend]
-        additional_dependencies:
-          - eslint@10.4.1
-          - typescript@6.0.2
-          - typescript-eslint@8.24.0
-          - "@eslint/js@10.4.1"
-
+```bash
+pip install pre-commit
 ```
 
-3. `pre-commit install`
-4. `pre-commit run --all-files`
+2. Create `.pre-commit-config.yaml` at the repository root (examples already in repo). After creating or updating it:
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+Notes:
+- The repo's pre-commit configuration runs Python checks (ruff) and frontend formatters (prettier) and lints. We intentionally configure the frontend lint to point only at `frontend/src` to avoid linting compiled assets.
 
 ---
 
 ## Root Orchestration Setup (Unified Dev Environment)
 
-To run both the FastAPI backend and the Vite frontend simultaneously with a single terminal command, install and configure `concurrently` at the repository root.
+To run Redis, the FastAPI backend and the Vite frontend together you can use `concurrently` at the repository root. The dev script in this repo explicitly calls the backend venv Python so the backend runs with the correct environment even when `concurrently` spawns the process.
 
-1. **Navigate to your repository root:**
-```bash
-cd /path/to/chess-multiplayer
+Example root `package.json` `dev` script used in this project:
 
-```
-
-2. **Initialize a root `package.json` (if you haven't already):**
-```bash
-npm init -y
-
-```
-
-3. **Install `concurrently` as a root development dependency:**
-```bash
-npm install --save-dev concurrently
-
-```
-
-4. **Configure the unified execution scripts:**
-Open your root **`package.json`** file and modify the `"scripts"` section to map the dual-stack development commands:
 ```json
-{
-  "name": "chess-multiplayer",
-  "private": true,
-  "version": "1.0.0",
-  "scripts": {
-    "dev": "concurrently \"uv run --directory backend uvicorn backend.main:asgi_app --reload\" \"npm run dev --prefix frontend\"",
-    "lint": "concurrently \"uv run --directory backend ruff check backend/\" \"npm run lint --prefix frontend\"",
-    "format:check": "concurrently \"uv run --directory backend ruff format --check backend/\" \"npm run --prefix frontend npx prettier --check .\""
-  },
-  "devDependencies": {
-    "concurrently": "^10.0.1"
-  }
-}
-
+"dev": "concurrently --kill-others -n \"redis,backend,frontend\" -c \"bgRed,bgBlue,bgGreen\" \"docker run --rm --name chess-redis -p 6379:6379 redis:alpine\" \"backend\\.venv\\Scripts\\python -m uvicorn backend.main:asgi_app --reload --port 8000\" \"npm run dev --prefix frontend\""
 ```
 
-5. **Launch the entire local application:**
-From the repository root, run the following command to spin up the hot-reloading backend server and the Vite frontend dev server at the exact same time:
-```bash
-npm run dev
+Notes and tips:
+- If a previous `chess-redis` container exists you must remove it before running the script:
 
+```powershell
+docker rm -f chess-redis
 ```
 
-> `concurrently` will spin up both processes in a single terminal session, prefixing the console logs with different colors so you can easily trace frontend asset compiling and backend WebSocket traffic simultaneously. Splitting the session or shutting down the terminal will cleanly terminate both servers at once.
+- Alternatively you can run the three pieces in separate terminals while developing:
+  - Terminal A (backend): activate venv and run `python -m uvicorn ...`
+  - Terminal B (redis): `docker run --rm --name chess-redis -p 6379:6379 redis:alpine`
+  - Terminal C (frontend): `npm --prefix frontend run dev`
 
-> **Tip:** You can also run `npm run lint` from the root to run your Python and TypeScript linters side-by-side locally before pushing your code to GitHub. Typing `Ctrl + C` in your terminal will cleanly terminate both the frontend and backend servers together.
+- `concurrently` will prefix console logs and terminate all child processes on Ctrl+C.
 
+---
+
+If you'd like, I can also:
+- Commit the updated runbook, or
+- Add a short example `Makefile` or PowerShell script to standardize dev startup on Windows/macOS.

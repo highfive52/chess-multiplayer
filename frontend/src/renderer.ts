@@ -53,7 +53,7 @@ export function renderBoard(
         // Helpful data attributes for pointer handling and debugging
         pieceImg.dataset.row = row.toString();
         pieceImg.dataset.col = col.toString();
-        if ((piece as any).id) pieceImg.dataset.pieceId = String((piece as any).id);
+        if ("id" in piece && piece.id != null) pieceImg.dataset.pieceId = String(piece.id);
 
         square.appendChild(pieceImg);
       }

@@ -40,13 +40,20 @@
         </div>
         <div class="hud-item">Identity: <span id="player-identity">Connecting...</span></div>
         <div class="hud-item">Status: <span id="turn-indicator">Waiting...</span></div>
-        <div class="hud-item">
-          <button id="btn-settings" class="btn-secondary">Settings</button>
+        <div class="hud-item hud-controls">
+          <span id="conn-status" class="conn-status disconnected">Disconnected</span>
+          <button id="btn-retry" class="btn-small">Retry</button>
         </div>
       </div>
 
       <div id="chess-board">
         <div id="board-loader">Synchronizing Live Board State...</div>
+      </div>
+
+      <!-- Bottom action bar below the board -->
+      <div id="bottom-action-bar" class="bottom-bar">
+        <button id="btn-copy-link" class="btn-small">Copy Link</button>
+        <button id="btn-settings" class="btn-small">Settings</button>
       </div>
     </div>
   </div>
