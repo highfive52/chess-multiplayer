@@ -43,15 +43,19 @@ export function renderBoard(
 
       const piece = matrix[row][col];
       if (piece) {
-        const pieceElement = document.createElement("span");
-        pieceElement.textContent = piece.type.toUpperCase();
-        pieceElement.style.color = piece.color === "w" ? "#ffffff" : "#000000";
+        // Use SVG assets from the public folder so graphics are crisp on all displays.
+        const pieceImg = document.createElement("img");
+        pieceImg.src = `${import.meta.env.BASE_URL}pieces/${piece.color}-${piece.type}.svg`;
+        pieceImg.alt = `${piece.color === "w" ? "White" : "Black"} ${piece.type.toUpperCase()}`;
+        pieceImg.className = "chess-piece";
+        pieceImg.setAttribute("draggable", "false");
 
-        if (piece.color === "w") {
-          pieceElement.style.webkitTextStroke = "1px #1e1e1e";
-        }
+        // Helpful data attributes for pointer handling and debugging
+        pieceImg.dataset.row = row.toString();
+        pieceImg.dataset.col = col.toString();
+        if ((piece as any).id) pieceImg.dataset.pieceId = String((piece as any).id);
 
-        square.appendChild(pieceElement);
+        square.appendChild(pieceImg);
       }
 
       boardContainer.appendChild(square);

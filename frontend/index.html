@@ -40,11 +40,36 @@
         </div>
         <div class="hud-item">Identity: <span id="player-identity">Connecting...</span></div>
         <div class="hud-item">Status: <span id="turn-indicator">Waiting...</span></div>
+        <div class="hud-item">
+          <button id="btn-settings" class="btn-secondary">Settings</button>
+        </div>
       </div>
 
       <div id="chess-board">
         <div id="board-loader">Synchronizing Live Board State...</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal (hidden by default) -->
+  <div id="settings-modal" class="hidden">
+    <div class="modal-card">
+      <header>
+        <h3>Settings</h3>
+        <button id="btn-close-settings" class="btn-close">Close</button>
+      </header>
+
+      <section>
+        <label for="select-input-mode">Move Input Mode</label>
+        <select id="select-input-mode">
+          <option value="click">Click to Move</option>
+          <option value="drag">Drag and Drop</option>
+          <option value="hybrid">Both (Click + Drag)</option>
+        </select>
+        <p class="note">
+          Choose how you prefer to move pieces. The server still validates all moves.
+        </p>
+      </section>
     </div>
   </div>
 

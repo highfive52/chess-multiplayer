@@ -10,6 +10,8 @@ from backend.validator import (
     causes_self_check,
     has_legal_moves,
 )
+import random
+import string
 
 # 1. Configure the Redis connection string (Defaulting to Docker localhost)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -175,6 +177,57 @@ async def handle_join_room(sid, data):
         {
             "room_id": room_code,
             "color": role,
+            "board": game_state["board"],
+            "current_turn": game_state["current_turn"],
+            "status": game_state.get("status", "active"),
+            "winner": game_state.get("winner", None),
+            "check_status": game_state.get("check_status", None),
+        },
+        to=sid,
+    )
+
+
+@sio.on("create_room")
+async def handle_create_room(sid, data=None):
+    """Create a new 4-letter room code, provision state, and assign the creator a seat."""
+    session = await sio.get_session(sid)
+    user_id = session.get("user_id") if session else None
+    if not user_id:
+        print(
+            f"[CREATE REJECT] SID [{sid}] missing user identity during room creation."
+        )
+        return
+
+    # Generate a unique 4-letter room code
+    def gen_code():
+        return "".join(random.choice(string.ascii_uppercase) for _ in range(4))
+
+    room_code = gen_code()
+    attempt = 0
+    while attempt < 10:
+        redis_key = f"room:{room_code}"
+        existing = await redis.get(redis_key)
+        if not existing:
+            break
+        room_code = gen_code()
+        attempt += 1
+
+    redis_room_key = f"room:{room_code}"
+    game_state = create_initial_state()
+    # Assign creator to white by default
+    game_state["players"]["white"] = user_id
+
+    await redis.set(redis_room_key, json.dumps(game_state))
+    await sio.save_session(sid, {"user_id": user_id, "room_id": room_code})
+    await sio.enter_room(sid, redis_room_key)
+
+    print(f"[ROOM CREATED] User [{user_id}] created Room [{room_code}].")
+
+    await sio.emit(
+        "assigned_role",
+        {
+            "room_id": room_code,
+            "color": "white",
             "board": game_state["board"],
             "current_turn": game_state["current_turn"],
             "status": game_state.get("status", "active"),

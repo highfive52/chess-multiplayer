@@ -3,334 +3,470 @@ import { io } from "socket.io-client";
 import { createInitialBoard } from "./boardState";
 import { renderBoard } from "./renderer";
 import type { Position, BoardMatrix } from "./types";
-import { toAlgebraic } from "./coordinates";
 import "./style.css";
 
 console.log("TypeScript environment up and running!");
+
+// Helpers: coordinate formatting for logs (matrix coords -> algebraic e.g. D2)
+function toAlgebraic(row: number, col: number): string {
+  const file = String.fromCharCode(65 + col); // A-H
+  const rank = 8 - row; // matrix row 0 -> rank 8
+  return `${file}${rank}`;
+}
+
+function fmtCoord(row: number, col: number): string {
+  return `${row},${col} (${toAlgebraic(row, col)})`;
+}
 
 // --- GAME STATE CONTAINER ---
 const board: BoardMatrix = createInitialBoard();
 let selectedSquare: Position | null = null;
 let myRole: "white" | "black" | "spectator" | null = null;
 let currentMatchStatus: "active" | "completed" = "active";
+let currentTurn: string = "white";
 
-// Grab our structural screens
+// --- USER PREFERENCES ---
+type InputMode = "drag" | "click" | "hybrid";
+let inputPreference: InputMode =
+  (localStorage.getItem("chess_input_mode") as InputMode) || "hybrid";
+
+// Grab structural screens & HUD references
+const serverLoader = document.getElementById("server-loader");
 const lobbyScreen = document.getElementById("lobby-screen");
 const appContainer = document.getElementById("app-container");
-
-// Grab our dynamic HUD elements
 const identityEl = document.getElementById("player-identity");
 const turnEl = document.getElementById("turn-indicator");
 const roomDisplay = document.getElementById("room-display");
 
-// Grab lobby control elements
-const btnCreate = document.getElementById("btn-create") as HTMLButtonElement;
-const btnJoin = document.getElementById("btn-join") as HTMLButtonElement;
-const inputRoomCode = document.getElementById("input-room-code") as HTMLInputElement;
+// Grab settings elements
+const settingsModal = document.getElementById("settings-modal");
+const btnSettings = document.getElementById("btn-settings");
+const btnCloseSettings = document.getElementById("btn-close-settings");
+const selectInputMode = document.getElementById("select-input-mode") as HTMLSelectElement;
 
-// Initialize Network Socket Connection
+// --- NETWORK INITIALIZATION ---
 const BACKEND_URL =
   window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
     ? "http://localhost:8000"
     : "https://chess-multiplayer-k792.onrender.com";
 
-// Check if an ID already exists in the browser's storage
 let userId = localStorage.getItem("chess_user_id");
-
 if (!userId) {
   userId = crypto.randomUUID();
   localStorage.setItem("chess_user_id", userId);
-  console.log(`[IDENTITY] Fresh token generated & saved: ${userId}`);
-} else {
-  console.log(`[IDENTITY] Welcome back. Existing token loaded: ${userId}`);
 }
 
 const socket = io(BACKEND_URL, {
   transports: ["websocket", "polling"],
-  auth: {
-    userId,
-  },
+  auth: { userId },
 });
 
-// 🏁 TRIGGER 1: Synchronous Initial Draw & Auto-Join URL Parsing
+// --- SCREEN VIEW ROUTING CONTROLLERS ---
+function showLobby() {
+  if (serverLoader) serverLoader.classList.add("hidden");
+  if (appContainer) appContainer.classList.add("hidden");
+  if (lobbyScreen) lobbyScreen.classList.remove("hidden");
+}
+
+function showGameRoom() {
+  if (serverLoader) serverLoader.classList.add("hidden");
+  if (lobbyScreen) lobbyScreen.classList.add("hidden");
+  if (appContainer) appContainer.classList.remove("hidden");
+}
+
+// --- SAFE DOM EVENT LIFECYCLE WRAPPER ---
+document.addEventListener("DOMContentLoaded", () => {
+  // Grab Lobby Action Buttons safely on ready state
+  const btnCreate = document.getElementById("btn-create") as HTMLButtonElement;
+  const btnJoin = document.getElementById("btn-join") as HTMLButtonElement;
+  const inputRoomCode = document.getElementById("input-room-code") as HTMLInputElement;
+
+  // Initialize Modal Dropdown Values on Bootup
+  if (selectInputMode) {
+    selectInputMode.value = inputPreference;
+  }
+
+  // Bind Modal Visibility Listeners
+  if (btnSettings && settingsModal) {
+    btnSettings.addEventListener("click", () => settingsModal.classList.remove("hidden"));
+  }
+  if (btnCloseSettings && settingsModal) {
+    btnCloseSettings.addEventListener("click", () => settingsModal.classList.add("hidden"));
+  }
+  if (settingsModal) {
+    settingsModal.addEventListener("click", (e) => {
+      if (e.target === settingsModal) settingsModal.classList.add("hidden");
+    });
+  }
+
+  // Bind Dropdown Selector Changes
+  if (selectInputMode) {
+    selectInputMode.addEventListener("change", (e) => {
+      const target = e.target as HTMLSelectElement;
+      inputPreference = target.value as InputMode;
+      localStorage.setItem("chess_input_mode", inputPreference);
+
+      selectedSquare = null;
+      renderBoard(board, selectedSquare, myRole);
+    });
+  }
+
+  // --- BIND BUTTON UI HANDLERS FOR LOBBY TRANSACTIONS ---
+  if (btnCreate) {
+    btnCreate.addEventListener("click", () => {
+      if (!socket.connected) {
+        alert("Not connected to backend. Trying to reconnect...");
+        try {
+          socket.connect();
+        } catch (e) {}
+        return;
+      }
+      socket.emit("create_room");
+    });
+  }
+
+  if (btnJoin && inputRoomCode) {
+    btnJoin.addEventListener("click", () => {
+      const code = inputRoomCode.value.trim().toUpperCase();
+      if (code.length === 4) {
+        socket.emit("join_room", { roomId: code });
+      } else {
+        alert("Please enter a valid 4-letter room code.");
+      }
+    });
+  }
+
+  // Show lobby immediately so buttons are usable while socket connects
+  showLobby();
+});
+
+// --- WAKEUP OVERLAY DISMISSAL ENGINE ---
+socket.on("connect", () => {
+  console.log(`⚡ Connected to backend at ${BACKEND_URL}! ID:`, socket.id);
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const roomFromUrl = urlParams.get("room")?.trim().toUpperCase();
+
+  if (!roomFromUrl || roomFromUrl.length !== 4) {
+    showLobby();
+  }
+});
+
+// Setup Initial Render Board Frame State
 renderBoard(board, selectedSquare, myRole);
 
-// Check if a room code is already embedded in the browser's address bar
+// Handle Outbound Direct URL Actions
 const urlParams = new URLSearchParams(window.location.search);
 const roomFromUrl = urlParams.get("room")?.trim().toUpperCase();
-
 if (roomFromUrl && roomFromUrl.length === 4) {
-  console.log(`[BOOT] Detected room parameter in URL. Auto-joining: ${roomFromUrl}`);
+  const inputRoomCode = document.getElementById("input-room-code") as HTMLInputElement;
   if (inputRoomCode) inputRoomCode.value = roomFromUrl;
   socket.emit("join_room", { roomId: roomFromUrl });
 }
 
-// --- TRIGGER 2: REMOTE NETWORK INPUTS (SOCKET LISTENERS) ---
-const loaderEl = document.getElementById("server-loader");
+// --- SOCKET ENGINE SYNCHRONIZATION ---
+socket.on("assigned_role", (payload) => {
+  const role = payload.color;
+  myRole = role;
+  currentMatchStatus = payload.status;
+  currentTurn = payload.current_turn;
+  if (roomDisplay) roomDisplay.textContent = payload.room_id;
+  if (identityEl) {
+    identityEl.textContent = role.toUpperCase();
+    identityEl.style.color =
+      role === "white" ? "#ffffff" : role === "black" ? "#000000" : "#6b7280";
+  }
+  for (let r = 0; r < 8; r++) board[r] = [...payload.board[r]];
+  updateTurnHUD(payload);
+  showGameRoom();
+  renderBoard(board, selectedSquare, myRole);
+  console.info(`[assigned_role] room=${payload.room_id} role=${role}`);
+  // Update the URL with the active room so share links and reloads work
+  if (payload.room_id && payload.room_id.length === 4) {
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("room", payload.room_id);
+      window.history.replaceState({}, "", u.toString());
+    } catch (e) {
+      // ignore URL manipulation errors
+    }
+  }
+});
 
-socket.on("connect", () => {
-  console.log(`⚡ Connected to backend at ${BACKEND_URL}! ID:`, socket.id);
-
-  const hideLoader = () => {
-    const activeLoader = document.getElementById("server-loader");
-    if (activeLoader) {
-      activeLoader.style.opacity = "0";
+socket.on("move_rejected", (payload) => {
+  // Visual feedback for rejected moves
+  console.warn(`Illegal Move: ${payload.reason}`);
+  if (lastProposedFrom) {
+    const sq = document.querySelector(
+      `.square[data-row="${lastProposedFrom.row}"][data-col="${lastProposedFrom.col}"]`
+    ) as HTMLElement;
+    if (sq) {
+      sq.classList.add("move-invalid");
       setTimeout(() => {
-        activeLoader.style.display = "none";
-      }, 500);
+        sq.classList.remove("move-invalid");
+        renderBoard(board, selectedSquare, myRole);
+      }, 520);
+    } else {
+      renderBoard(board, selectedSquare, myRole);
     }
-  };
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", hideLoader);
+    lastProposedFrom = null;
   } else {
-    hideLoader();
-  }
-});
-
-socket.on("disconnect", () => {
-  console.warn("❌ Disconnected from cloud server.");
-  if (loaderEl) {
-    loaderEl.style.display = "flex";
-    loaderEl.style.opacity = "1";
-  }
-});
-
-// --- LOBBY CORE INTERACTION RULES ---
-
-if (btnCreate) {
-  btnCreate.addEventListener("click", () => {
-    const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    let randomCode = "";
-    for (let i = 0; i < 4; i++) {
-      randomCode += characters.charAt(Math.floor(Math.random() * characters.length));
-    }
-    console.log(`[LOBBY] Requesting creation of Room: ${randomCode}`);
-
-    const currentUrl = new URL(window.location.href);
-    currentUrl.searchParams.set("room", randomCode);
-    window.history.pushState({ path: currentUrl.toString() }, "", currentUrl.toString());
-
-    socket.emit("join_room", { roomId: randomCode });
-  });
-}
-
-if (btnJoin && inputRoomCode) {
-  btnJoin.addEventListener("click", () => {
-    const enteredCode = inputRoomCode.value.trim().toUpperCase();
-    if (enteredCode.length !== 4) {
-      alert("Please enter a valid 4-character room code.");
-      return;
-    }
-    console.log(`[LOBBY] Requesting entry to Room: ${enteredCode}`);
-
-    const currentUrl = new URL(window.location.href);
-    currentUrl.searchParams.set("room", enteredCode);
-    window.history.pushState({ path: currentUrl.toString() }, "", currentUrl.toString());
-
-    socket.emit("join_room", { roomId: enteredCode });
-  });
-}
-
-// Catch initial role assignment AND catch up to the current board state
-socket.on(
-  "assigned_role",
-  (payload: {
-    room_id: string;
-    color: "white" | "black" | "spectator";
-    board: BoardMatrix;
-    current_turn: string;
-    status: "active" | "completed"; // ◄ NEW FIELD
-    winner: string | null; // ◄ NEW FIELD
-    check_status: "white" | "black" | null; // ◄ NEW FIELD
-  }) => {
-    myRole = payload.color;
-    currentMatchStatus = payload.status; // ◄ Capture initial or historical match state
-
-    // 1. Establish room code and identity HUD elements
-    if (roomDisplay) {
-      roomDisplay.textContent = payload.room_id;
-    }
-
-    if (identityEl) {
-      identityEl.textContent = myRole.toUpperCase();
-      if (myRole === "white") identityEl.style.color = "#ffffff";
-      if (myRole === "black") identityEl.style.color = "#000000";
-      if (myRole === "spectator") identityEl.style.color = "#6b7280";
-    }
-
-    // 2. Hydrate the local board matrix with the server's current truth
-    for (let r = 0; r < 8; r++) {
-      board[r] = [...payload.board[r]];
-    }
-
-    // 3. Update the Turn HUD to reflect the active player or historical game-over
-    if (turnEl) {
-      if (payload.status === "completed") {
-        turnEl.textContent = payload.winner
-          ? `CHECKMATE - ${payload.winner.toUpperCase()} WINS! 🎉`
-          : "GAME OVER - DRAW";
-        turnEl.style.color = "#a855f7";
-      } else {
-        const isMyTurn = myRole === payload.current_turn;
-        const checkSuffix = payload.check_status === payload.current_turn ? " (IN CHECK)" : "";
-
-        if (myRole === "spectator") {
-          turnEl.textContent = `Spectating - ${payload.current_turn.toUpperCase()}'s Turn${checkSuffix}`;
-          turnEl.style.color = "#4b5563";
-        } else if (isMyTurn) {
-          turnEl.textContent = `YOUR TURN${checkSuffix}`;
-          turnEl.style.color = payload.check_status ? "#ea580c" : "#16a34a";
-        } else {
-          turnEl.textContent = `OPPONENT'S TURN${checkSuffix}`;
-          turnEl.style.color = "#dc2626";
-        }
-      }
-    }
-
-    // Transition views from Lobby to Active Game Room
-    if (lobbyScreen) lobbyScreen.classList.add("hidden");
-    if (appContainer) appContainer.classList.remove("hidden");
-
-    // 4. Force a fresh screen paint (pass viewer role so board orients correctly)
     renderBoard(board, selectedSquare, myRole);
   }
-);
-
-// AUTHORITATIVE SNAPSHOT LISTENER WITH RULE ENFORCEMENT
-socket.on("move_rejected", (payload: { reason: string }) => {
-  console.warn("⚠️ Move was rejected by the server engine:", payload.reason);
-  alert(`Illegal Move: ${payload.reason}`);
 });
 
-socket.on(
-  "move_executed",
-  (payload: {
-    board: BoardMatrix;
-    current_turn: string;
-    status: "active" | "completed";
-    winner: string | null;
-    check_status: "white" | "black" | null;
-    last_move: { from: { row: number; col: number }; to: { row: number; col: number } } | null;
-  }) => {
-    console.log("📥 Authoritative state snapshot arrived from server!");
-    currentMatchStatus = payload.status;
-
-    // 1. Overwrite local memory array references entirely
-    for (let r = 0; r < 8; r++) {
-      board[r] = [...payload.board[r]];
-    }
-
-    // 2. Handle Game Status & Turn HUD Indicator text and style
-    if (turnEl) {
-      if (payload.status === "completed") {
-        const winMessage = payload.winner
-          ? `CHECKMATE - ${payload.winner.toUpperCase()} WINS! 🎉`
-          : "GAME OVER - DRAW";
-
-        turnEl.textContent = winMessage;
-        turnEl.style.color = "#a855f7"; // Elegant Victory Purple
-
-        setTimeout(() => alert(winMessage), 50);
-      } else {
-        const isMyTurn = myRole === payload.current_turn;
-        const checkSuffix = payload.check_status === payload.current_turn ? " (IN CHECK)" : "";
-
-        if (myRole === "spectator") {
-          turnEl.textContent = `Spectating - ${payload.current_turn.toUpperCase()}'s Turn${checkSuffix}`;
-          turnEl.style.color = "#4b5563";
-        } else if (isMyTurn) {
-          turnEl.textContent = `YOUR TURN${checkSuffix}`;
-          turnEl.style.color = payload.check_status ? "#ea580c" : "#16a34a";
-        } else {
-          turnEl.textContent = `OPPONENT'S TURN${checkSuffix}`;
-          turnEl.style.color = "#dc2626";
-        }
-      }
-    }
-
-    // 3. Reset local click selections cleanly if the game is over to freeze interactions
-    if (payload.status === "completed") {
-      selectedSquare = null; // Set to type safe null instead of invalid index markers
-    }
-
-    // 4. Repaint UI using master matrix layout (preserve viewer orientation)
-    renderBoard(board, selectedSquare, myRole);
+socket.on("move_executed", (payload) => {
+  currentMatchStatus = payload.status;
+  currentTurn = payload.current_turn;
+  for (let r = 0; r < 8; r++) board[r] = [...payload.board[r]];
+  updateTurnHUD(payload);
+  selectedSquare = null;
+  renderBoard(board, selectedSquare, myRole);
+  if (payload.last_move) {
+    const fm = payload.last_move.from;
+    const to = payload.last_move.to;
+    console.info(`[move_executed] from=${fmtCoord(fm.row, fm.col)} to=${fmtCoord(to.row, to.col)}`);
+  } else {
+    console.info("[move_executed] board updated");
   }
-);
+});
 
-// --- TRIGGER 3: LOCAL HUMAN INPUT (CLICK INTERACTION LOOP) ---
+function updateTurnHUD(payload: any) {
+  if (!turnEl) return;
+  if (payload.status === "completed") {
+    turnEl.textContent = payload.winner
+      ? `CHECKMATE - ${payload.winner.toUpperCase()} WINS! 🎉`
+      : "GAME OVER - DRAW";
+    turnEl.style.color = "#a855f7";
+  } else {
+    const isMyTurn = myRole === payload.current_turn;
+    const checkSuffix = payload.check_status === payload.current_turn ? " (IN CHECK)" : "";
+    if (myRole === "spectator") {
+      turnEl.textContent = `Spectating - ${payload.current_turn.toUpperCase()}'s Turn${checkSuffix}`;
+      turnEl.style.color = "#4b5563";
+    } else if (isMyTurn) {
+      turnEl.textContent = `YOUR TURN${checkSuffix}`;
+      turnEl.style.color = payload.check_status ? "#ea580c" : "#16a34a";
+    } else {
+      turnEl.textContent = `OPPONENT'S TURN${checkSuffix}`;
+      turnEl.style.color = "#dc2626";
+    }
+  }
+}
+
+// --- POINTER LAYER CAPTURE MACHINE ---
 const boardContainer = document.getElementById("chess-board");
-if (boardContainer) {
-  boardContainer.addEventListener("click", (event) => {
-    // 🛑 FREEZE INTERACTION GUARD
-    if (currentMatchStatus === "completed") {
-      console.log("[BOARD FROZEN] Click ignored. Match has concluded via checkmate.");
-      return;
-    }
-    const targetSquare = (event.target as HTMLElement).closest(".square") as HTMLElement;
-    if (!targetSquare) return;
+let activeDragPiece: HTMLElement | null = null;
+let sourceSquare: { row: number; col: number } | null = null;
+let lastProposedFrom: { row: number; col: number } | null = null;
+let hasMovedSignificantly = false;
+let startX = 0;
+let startY = 0;
+let dragClone: HTMLElement | null = null;
+let activePieceImgOriginal: HTMLElement | null = null;
+let isDragging = false;
 
-    const row = parseInt(targetSquare.dataset.row!, 10);
-    const col = parseInt(targetSquare.dataset.col!, 10);
+if (boardContainer) {
+  boardContainer.addEventListener("pointerdown", (event) => {
+    if (currentMatchStatus === "completed" || myRole === "spectator" || myRole !== currentTurn)
+      return;
+
+    const target = event.target as HTMLElement;
+    const squareEl = target.closest(".square") as HTMLElement;
+    if (!squareEl) return;
+
+    const row = parseInt(squareEl.dataset.row!, 10);
+    const col = parseInt(squareEl.dataset.col!, 10);
     const clickedPiece = board[row][col];
 
-    console.log(`Clicked square: ${toAlgebraic(row, col)} | Indices: [${row}][${col}]`);
+    startX = event.clientX;
+    startY = event.clientY;
+    hasMovedSignificantly = false;
 
-    // CASE 1: No piece is currently selected (Attempting to lift a piece)
-    if (selectedSquare === null) {
-      if (clickedPiece) {
-        const pieceColorMapped = clickedPiece.color === "w" ? "white" : "black";
-
-        if (myRole === "spectator") {
-          console.log("Spectators cannot select or move pieces.");
-          return;
-        }
-
-        if (pieceColorMapped !== myRole) {
-          console.log(
-            `Selection blocked. You are ${myRole?.toUpperCase()}, that piece is ${pieceColorMapped.toUpperCase()}`
-          );
-          return;
-        }
-
-        selectedSquare = { row, col };
-        console.log(`Selected piece: ${clickedPiece.color}${clickedPiece.type.toUpperCase()}`);
-      } else {
-        console.log("Empty square clicked. Nothing to select.");
-      }
-    }
-    // CASE 2: A piece was already selected, meaning this click is a destination target
-    else {
-      const fromRow = selectedSquare.row;
-      const fromCol = selectedSquare.col;
-
-      if (fromRow === row && fromCol === col) {
-        selectedSquare = null;
-        console.log("Deselected active piece.");
-      } else {
-        const movingPiece = board[fromRow][fromCol];
-
-        if (movingPiece) {
-          console.log(
-            `🚀 Proposing move: ${
-              movingPiece.color
-            }${movingPiece.type.toUpperCase()} from ${toAlgebraic(
-              fromRow,
-              fromCol
-            )} to ${toAlgebraic(row, col)}`
-          );
-
-          socket.emit("propose_move", {
-            from: { row: fromRow, col: fromCol },
-            to: { row, col },
-          });
-        }
-
-        selectedSquare = null;
-      }
+    if (inputPreference === "click") {
+      handleSquareClick(row, col);
+      return;
     }
 
+    if (!clickedPiece) {
+      if (inputPreference === "hybrid" && selectedSquare) {
+        handleSquareClick(row, col);
+      }
+      return;
+    }
+
+    const pieceColorMapped = clickedPiece.color === "w" ? "white" : "black";
+    if (pieceColorMapped !== myRole) {
+      if (inputPreference === "hybrid" && selectedSquare) {
+        handleSquareClick(row, col);
+      }
+      return;
+    }
+
+    // Prepare for a possible drag. Don't mutate DOM yet — we clone when drag starts.
+    sourceSquare = { row, col };
+    const pieceImg = squareEl.querySelector(".chess-piece") as HTMLElement;
+    if (!pieceImg) return;
+
+    activePieceImgOriginal = pieceImg;
+    activeDragPiece = null;
+    isDragging = false;
+    dragClone = null;
+    event.preventDefault();
+    console.debug(`[pointerdown] source=${fmtCoord(row, col)}`);
+  });
+
+  boardContainer.addEventListener("pointermove", (event) => {
+    if (!activePieceImgOriginal || !sourceSquare) return;
+
+    if (!hasMovedSignificantly) {
+      const deltaX = Math.abs(event.clientX - startX);
+      const deltaY = Math.abs(event.clientY - startY);
+      if (deltaX > 4 || deltaY > 4) {
+        hasMovedSignificantly = true;
+
+        if (inputPreference === "drag" || inputPreference === "hybrid") {
+          // Create a floating clone for the drag visual so the board DOM remains untouched.
+          dragClone = activePieceImgOriginal.cloneNode(true) as HTMLElement;
+          dragClone.classList.add("is-dragging");
+          dragClone.style.position = "fixed";
+          dragClone.style.pointerEvents = "none";
+          const squareEl = activePieceImgOriginal.parentElement as HTMLElement;
+          dragClone.style.width = `${squareEl.offsetWidth * 0.85}px`;
+          dragClone.style.height = `${squareEl.offsetHeight * 0.85}px`;
+          document.body.appendChild(dragClone);
+          // Hide the original piece so it appears to be picked up
+          try {
+            activePieceImgOriginal.style.visibility = "hidden";
+          } catch (e) {}
+          boardContainer.setPointerCapture(event.pointerId);
+          isDragging = true;
+          activeDragPiece = dragClone;
+          updatePiecePosition(event.clientX, event.clientY);
+          if (sourceSquare)
+            console.debug(`[dragstart] from=${fmtCoord(sourceSquare.row, sourceSquare.col)}`);
+        }
+      }
+    } else if (isDragging && dragClone) {
+      updatePiecePosition(event.clientX, event.clientY);
+    }
+  });
+
+  boardContainer.addEventListener("pointerup", (event) => {
+    // If the pointer never moved significantly, treat as a click
+    if (!hasMovedSignificantly && sourceSquare) {
+      cleanupDragStyles();
+      // Only treat as a click when click input is allowed (click or hybrid)
+      if (inputPreference !== "drag") {
+        handleSquareClick(sourceSquare.row, sourceSquare.col);
+      }
+      sourceSquare = null;
+      activePieceImgOriginal = null;
+      return;
+    }
+
+    // End of a drag operation
+    if (!activePieceImgOriginal || !sourceSquare) return;
+
+    if (boardContainer.hasPointerCapture(event.pointerId)) {
+      boardContainer.releasePointerCapture(event.pointerId);
+    }
+
+    // Determine drop target
+    const dropTarget = document.elementFromPoint(
+      event.clientX,
+      event.clientY
+    ) as HTMLElement | null;
+    const targetSquare = dropTarget?.closest(".square") as HTMLElement | null;
+    if (targetSquare) {
+      const toRow = parseInt(targetSquare.dataset.row!, 10);
+      const toCol = parseInt(targetSquare.dataset.col!, 10);
+
+      if (sourceSquare.row !== toRow || sourceSquare.col !== toCol) {
+        lastProposedFrom = { row: sourceSquare.row, col: sourceSquare.col };
+        console.info(
+          `[propose_move] from=${fmtCoord(sourceSquare.row, sourceSquare.col)} to=${fmtCoord(
+            toRow,
+            toCol
+          )}`
+        );
+        socket.emit("propose_move", {
+          from: { row: sourceSquare.row, col: sourceSquare.col },
+          to: { row: toRow, col: toCol },
+        });
+      }
+    }
+
+    // Clean up clone and state
+    cleanupDragStyles();
+    sourceSquare = null;
+    activePieceImgOriginal = null;
+    activeDragPiece = null;
+    isDragging = false;
     renderBoard(board, selectedSquare, myRole);
   });
+
+  function cleanupDragStyles() {
+    if (dragClone && dragClone.parentElement) {
+      try {
+        dragClone.parentElement.removeChild(dragClone);
+      } catch (e) {}
+    }
+    dragClone = null;
+    // Restore original piece visibility if it was hidden
+    if (activePieceImgOriginal) {
+      try {
+        activePieceImgOriginal.style.visibility = "";
+      } catch (e) {}
+    }
+    if (activeDragPiece) {
+      activeDragPiece.classList.remove("is-dragging");
+      activeDragPiece.style.position = "";
+      activeDragPiece.style.left = "";
+      activeDragPiece.style.top = "";
+      activeDragPiece.style.width = "";
+      activeDragPiece.style.height = "";
+    }
+    isDragging = false;
+  }
+
+  function handleSquareClick(row: number, col: number) {
+    if (isDragging) return; // ignore clicks while dragging
+    const clickedPiece = board[row][col];
+
+    if (selectedSquare === null) {
+      if (clickedPiece && (clickedPiece.color === "w" ? "white" : "black") === myRole) {
+        selectedSquare = { row, col };
+        renderBoard(board, selectedSquare, myRole);
+        console.debug(`[select] selected=${fmtCoord(row, col)}`);
+      }
+    } else {
+      if (selectedSquare.row === row && selectedSquare.col === col) {
+        selectedSquare = null;
+        renderBoard(board, selectedSquare, myRole);
+      } else if (clickedPiece && (clickedPiece.color === "w" ? "white" : "black") === myRole) {
+        selectedSquare = { row, col };
+        renderBoard(board, selectedSquare, myRole);
+      } else {
+        lastProposedFrom = { row: selectedSquare.row, col: selectedSquare.col };
+        console.info(
+          `[propose_move] from=${fmtCoord(selectedSquare.row, selectedSquare.col)} to=${fmtCoord(
+            row,
+            col
+          )}`
+        );
+        socket.emit("propose_move", {
+          from: { row: selectedSquare.row, col: selectedSquare.col },
+          to: { row, col },
+        });
+        selectedSquare = null;
+      }
+    }
+  }
+
+  function updatePiecePosition(clientX: number, clientY: number) {
+    if (!activeDragPiece) return;
+    activeDragPiece.style.left = `${clientX - activeDragPiece.offsetWidth / 2}px`;
+    activeDragPiece.style.top = `${clientY - activeDragPiece.offsetHeight / 2}px`;
+  }
 }
