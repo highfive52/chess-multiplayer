@@ -1,42 +1,40 @@
-# .pre-commit-config.yaml (at the repository root)
+# .pre-commit-config.yaml
 repos:
-  # --- PYTHON BACKEND TOOLS ---
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.0
-    hooks:
-      - id: ruff         # Python Linter (Catches bugs)
-        files: ^backend/
-      - id: ruff-format  # Python Formatter (Replaces Black)
-        files: ^backend/
-
-  # --- TYPESCRIPT FRONTEND TOOLS ---
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.1.0
-    hooks:
-      - id: prettier     # Frontend Formatter (HTML/CSS/TS)
-        files: ^frontend/
-        additional_dependencies: ['prettier@3.1.0']
-
-  # --- TESTS ---
   - repo: local
     hooks:
-      - id: pytest
-        name: pytest
-        entry: pytest -q
-        language: python
+      # --- PYTHON BACKEND ---
+      - id: ruff-check
+        name: Ruff check
+        entry: bash -c 'cd backend && uv run ruff check .'
+        language: system
         pass_filenames: false
-        additional_dependencies:
-          - pytest>=7.0.0
-          - fastapi>=0.136.3
-          - python-socketio>=5.16.2
-          - redis>=8.0.0
         files: ^backend/
-  # --- FRONTEND LINT (uses project local node_modules) ---
-  - repo: local
-    hooks:
-      - id: eslint-frontend
-        name: ESLint frontend
+
+      - id: ruff-format
+        name: Ruff format
+        entry: bash -c 'cd backend && uv run ruff format .'
+        language: system
+        pass_filenames: false
+        files: ^backend/
+
+      - id: pytest
+        name: Backend tests
+        entry: bash -c 'cd backend && uv run pytest -q'
+        language: system
+        pass_filenames: false
+        files: ^backend/
+
+      # --- TYPESCRIPT FRONTEND ---
+      - id: prettier
+        name: Prettier format
+        entry: npm --prefix frontend run format
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+
+      - id: eslint
+        name: Frontend lint
         entry: npm --prefix frontend run lint --silent
         language: system
         pass_filenames: false
-        always_run: true
+        files: ^frontend/

@@ -193,7 +193,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         await navigator.clipboard.writeText(url);
         showToast("Link copied to clipboard");
-      } catch (e) {
+      } catch {
         showToast("Unable to copy link");
       }
     });
@@ -282,7 +282,7 @@ socket.on("assigned_role", (payload) => {
       const u = new URL(window.location.href);
       u.searchParams.set("room", payload.room_id);
       window.history.replaceState({}, "", u.toString());
-    } catch (e) {
+    } catch {
       // ignore URL manipulation errors
     }
   }

@@ -1,111 +1,534 @@
 # Chess Multiplayer
 
-A simple multiplayer chess project with a TypeScript frontend and a Python FastAPI backend using Redis for game state/coordination.
+A real-time multiplayer chess application with a Vite + TypeScript frontend and a Python FastAPI backend.
 
-**Components**
+The application supports two-player games and spectators, with the backend acting as the authoritative source for game state and chess-rule validation. Socket.IO provides real-time communication between browsers and the backend, while Redis stores the shared live game state.
 
-- **frontend/**: A Vite + TypeScript single-page app that renders the chessboard, handles user input, and talks to the backend via Socket.IO. Development server and build tasks are defined in frontend/package.json.
-- **backend/**: A FastAPI service (located under backend/src/backend) that contains the game referee, room management, and Redis integration. Uses `pyproject.toml` / `requirements.txt` for dependencies.
-- **docs/**: Project notes and runbook.
+## Live Demo
 
-**Live Demo**
+The application is available at:
 
-A hosted live demo is available at: https://highfive52.github.io/chess-multiplayer/
+https://highfive52.github.io/chess-multiplayer/
 
-**Architecture Diagram**
+## Architecture
+
+```text
+Browser
+   │
+   ▼
+Vite + TypeScript Frontend
+GitHub Pages
+   │
+   │ Socket.IO / HTTP
+   ▼
+FastAPI + Socket.IO Backend
+Render
+   │
+   ▼
+Redis-Compatible Key Value Store
+Render
+```
+
+For local development, the same application architecture runs with the frontend and backend locally and Redis running in Docker.
+
+```text
+Browser
+   │
+   ▼
+Vite Development Server
+localhost:5173
+   │
+   │ Socket.IO / HTTP
+   ▼
+FastAPI + Socket.IO
+localhost:8000
+   │
+   ▼
+Redis
+localhost:6379
+```
+
+### Game Flow
 
 ![Game Flow](docs/charts/chess_game_flow.png)
 
-**Prerequisites**
+## Components
 
-- Node.js (16+) and `npm` for the frontend
-- Python 3.12+ for the backend
-- Redis server accessible at `localhost:6379` for local development (or a remote Redis URL)
+### `frontend/`
 
-You can run Redis locally or via Docker:
+A Vite + TypeScript single-page application responsible for:
 
-```bash
-# Local (if installed)
-redis-server
+* rendering the chessboard using the DOM and CSS
+* handling player interaction
+* creating and joining game rooms
+* submitting proposed moves
+* receiving real-time game-state updates
+* displaying games to players and spectators
 
-# Docker
-docker run --rm -p 6379:6379 redis:7
+Frontend dependencies and development commands are managed through `frontend/package.json` and `frontend/package-lock.json`.
+
+### `backend/`
+
+A Python FastAPI and Socket.IO service located under `backend/src/backend`.
+
+The backend is responsible for:
+
+* room creation and membership
+* assigning white, black, and spectator roles
+* maintaining authoritative game state
+* validating proposed chess moves
+* enforcing player turns
+* detecting check, checkmate, and stalemate
+* updating Redis
+* broadcasting accepted game-state changes
+
+Python dependencies and development tools are managed through:
+
+```text
+backend/pyproject.toml
+backend/uv.lock
 ```
 
-**Run locally (frontend)**
+`backend/requirements.txt` is generated from the `uv` dependency definition for deployment environments that consume a requirements file.
 
-1. Install frontend deps and start the dev server:
+### `docs/`
+
+Contains project documentation, diagrams, implementation plans, and the development runbook.
+
+## Technology
+
+### Frontend
+
+* TypeScript
+* Vite
+* Socket.IO Client
+* ESLint
+* Prettier
+
+### Backend
+
+* Python
+* FastAPI
+* python-socketio
+* Redis
+* Uvicorn
+* pytest
+* Ruff
+
+### Development
+
+* WSL / Linux
+* `uv`
+* npm
+* Honcho
+* Make
+* Docker
+
+## Prerequisites
+
+The preferred local development environment is WSL/Linux.
+
+Install:
+
+* Python 3.12+
+* `uv`
+* Node.js and npm
+* Docker
+* Honcho
+* Make
+* pre-commit
+
+Node.js should be installed directly in the Linux/WSL environment rather than using the Windows Node.js installation from inside WSL.
+
+For example, Node can be managed with `nvm`.
+
+## Initial Setup
+
+Clone the repository and enter the project directory:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+git clone https://github.com/highfive52/chess-multiplayer.git
+cd chess-multiplayer
 ```
 
-This serves the frontend (Vite). The frontend will attempt to connect to the backend at `http://localhost:8000` when the browser hostname is `localhost` (see `frontend/src/main.ts`).
+Install the backend dependencies:
 
-Open the dev page reported by Vite (usually `http://localhost:5173`) in your browser.
-
-**Run locally (backend)**
-
-1. From the repo root, change into the backend folder and create/activate a virtual environment (PowerShell example):
-
-```powershell
+```bash
 cd backend
-python -m venv .venv
-. .venv/Scripts/Activate.ps1
-pip install -r requirements.txt
-```
-
-2. Start the FastAPI app with Uvicorn (example):
-
-```bash
-cd backend
-# from inside the backend folder
-uvicorn src.backend.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Ensure Redis is running before starting the backend.
-
-**Run combined (root `npm run dev`)**
-
-This repository includes a root-level helper that starts a Redis container, the backend server, and the frontend dev server in parallel using `concurrently`.
-
-
-1. Prepare dependencies and start the combined dev runner:
-
-```bash
-# Install root dev dependency (concurrently) from repository root
-npm install
-
-# Ensure frontend dependencies are installed (required before running the root script)
-cd frontend
-npm install
+uv sync
 cd ..
-
-# Start everything from the repository root
-npm run dev
 ```
 
-The root `dev` script (in `package.json`) will:
+Install the frontend dependencies:
 
-- Start a Redis container using Docker: `docker run --rm --name chess-redis -p 6379:6379 redis:alpine`
-- Launch the backend (via the `uv`/`uvicorn` runner): `uv run uvicorn backend.main:asgi_app --reload --port 8000`
-- Launch the frontend dev server: `npm run dev --prefix frontend`
+```bash
+npm --prefix frontend ci
+```
 
-Notes:
+Or install both using the Makefile:
 
-- Docker must be installed and running locally for the root `npm run dev` script to start Redis.
-- The root script uses the `concurrently` package (declared as a devDependency in `package.json`) to run these three processes together.
+```bash
+make install
+```
 
-**Notes**
+Install the pre-commit hooks:
 
-- The frontend stores a local `chess_user_id` token in `localStorage` and auto-joins a room if a `?room=ABCD` parameter is present in the URL.
-- Lobby actions (`Create` / `Join`) update the browser search params and emit Socket.IO events to the backend.
-- When running frontend and backend locally, make sure the backend is reachable at `http://localhost:8000` (the frontend falls back to a hosted URL otherwise).
+```bash
+pre-commit install
+```
 
-**Troubleshooting**
+## Run the Application
 
-- If the frontend doesn't connect, open browser console to confirm the backend URL and check CORS/socket settings on the backend.
-- If the backend complains about Redis, verify the Redis server is running and reachable on `localhost:6379` (or set the appropriate env var in the backend if configured).
+The preferred development command is:
 
+```bash
+make dev
+```
+
+This uses Honcho and `Procfile.dev` to start the local application processes:
+
+```text
+redis     → Docker Redis container
+backend   → FastAPI + Socket.IO via Uvicorn
+frontend  → Vite development server
+```
+
+The services are available at approximately:
+
+```text
+Frontend    http://localhost:5173
+Backend     http://localhost:8000
+FastAPI     http://localhost:8000/docs
+Redis       localhost:6379
+```
+
+The exact frontend port is reported by Vite when it starts.
+
+## Run Services Individually
+
+The Makefile also exposes the individual services.
+
+### Redis
+
+```bash
+make start-redis
+```
+
+This starts Redis using Docker.
+
+### Backend
+
+```bash
+make start-backend
+```
+
+Equivalent to running:
+
+```bash
+cd backend
+uv run uvicorn backend.main:asgi_app \
+  --app-dir src \
+  --reload \
+  --host 0.0.0.0 \
+  --port 8000
+```
+
+### Frontend
+
+```bash
+make start-frontend
+```
+
+Equivalent to:
+
+```bash
+npm --prefix frontend run dev
+```
+
+## Development Commands
+
+Install all dependencies:
+
+```bash
+make install
+```
+
+Run the complete local environment:
+
+```bash
+make dev
+```
+
+Run backend tests:
+
+```bash
+make test
+```
+
+Backend commands can also be executed directly through `uv`:
+
+```bash
+cd backend
+
+uv run pytest
+uv run ruff check .
+uv run ruff format .
+```
+
+Frontend commands are defined in `frontend/package.json`:
+
+```bash
+npm --prefix frontend run dev
+npm --prefix frontend run build
+npm --prefix frontend run lint
+npm --prefix frontend run format
+npm --prefix frontend run format:check
+npm --prefix frontend run preview
+```
+
+## Code Quality
+
+The project uses pre-commit hooks to run backend and frontend quality checks.
+
+```bash
+pre-commit run --all-files
+```
+
+The hooks run:
+
+```text
+Backend
+├── Ruff lint
+├── Ruff format
+└── pytest
+
+Frontend
+├── Prettier format
+└── ESLint
+```
+
+Ruff and Prettier automatically apply formatting changes. Linting and tests report issues that require developer attention.
+
+The pre-commit configuration invokes the project's existing development environments rather than maintaining separate copies of the dependencies:
+
+```text
+pre-commit
+├── uv
+│   └── backend/pyproject.toml + uv.lock
+│
+└── npm
+    └── frontend/package.json + package-lock.json
+```
+
+## Backend Dependency Management
+
+`uv` is the authoritative dependency-management tool for the backend.
+
+The primary files are:
+
+```text
+backend/pyproject.toml
+backend/uv.lock
+```
+
+Synchronize the local environment with:
+
+```bash
+cd backend
+uv sync
+```
+
+The deployment `requirements.txt` can be generated from the `uv` environment with:
+
+```bash
+cd backend
+uv export \
+  --format requirements-txt \
+  --no-emit-project \
+  --output-file requirements.txt
+```
+
+This keeps dependency ownership in `pyproject.toml` and `uv.lock` while still supporting deployment platforms that expect a `requirements.txt` file.
+
+## Multiplayer Game Flow
+
+When a player makes a move, the frontend sends the proposed source and destination coordinates to the backend.
+
+```text
+Player
+  │
+  │ select piece + destination
+  ▼
+Frontend
+  │
+  │ propose_move
+  ▼
+Socket.IO
+  │
+  ▼
+FastAPI Backend
+  │
+  ├── identify player/session
+  ├── load authoritative room state
+  ├── determine piece at source square
+  ├── validate move
+  ├── validate turn
+  ├── prevent self-check
+  ├── update board
+  ├── determine check/checkmate/stalemate
+  └── persist current state to Redis
+          │
+          ▼
+      move_executed
+          │
+          ▼
+      Connected Players
+      and Spectators
+```
+
+The browser proposes a move, but the backend determines whether that move is accepted. Clients do not directly mutate the authoritative game state.
+
+## Game State
+
+Redis stores the authoritative live state for each active room.
+
+A room contains information such as:
+
+* white player
+* black player
+* current turn
+* board position
+* castling rights
+* game status
+* winner
+* check status
+
+Socket.IO sessions maintain connection-specific information such as the current user and room.
+
+This separates:
+
+```text
+Socket.IO session
+    → connection context
+
+Redis room state
+    → shared authoritative game state
+```
+
+## Frontend Behavior
+
+The frontend stores a local `chess_user_id` token in `localStorage`.
+
+Room URLs use a query parameter such as:
+
+```text
+?room=ABCD
+```
+
+When a room parameter is present, the frontend can automatically join the corresponding game.
+
+Lobby actions such as Create and Join update the browser URL and emit Socket.IO events to the backend.
+
+During local development, the frontend connects to the backend at:
+
+```text
+http://localhost:8000
+```
+
+## Deployment
+
+The production application currently uses separate frontend and backend hosting.
+
+### Frontend
+
+The Vite frontend is built and deployed to GitHub Pages using GitHub Actions.
+
+### Backend
+
+The FastAPI/Socket.IO backend runs on Render.
+
+The backend starts with Uvicorn using the ASGI application:
+
+```text
+backend.main:asgi_app
+```
+
+### Redis
+
+The deployed backend uses a Render Redis-compatible Key Value service.
+
+The connection is configured through the `REDIS_URL` environment variable.
+
+Local development defaults to:
+
+```text
+redis://localhost:6379
+```
+
+## Troubleshooting
+
+### Frontend cannot connect to the backend
+
+Confirm that the backend is running:
+
+```bash
+curl -I http://localhost:8000/docs
+```
+
+A successful response should return HTTP 200.
+
+Also check the browser developer console for the Socket.IO backend URL and connection errors.
+
+### Backend cannot connect to Redis
+
+Confirm the Redis container is running:
+
+```bash
+docker ps
+```
+
+The local Redis service should be reachable at:
+
+```text
+localhost:6379
+```
+
+### Frontend dependencies behave differently between Windows and WSL
+
+Do not reuse Windows-created `node_modules` from WSL.
+
+Remove the existing frontend dependencies and reinstall them using the Linux Node/npm environment:
+
+```bash
+rm -rf frontend/node_modules
+npm --prefix frontend ci
+```
+
+Verify that Node and npm resolve to Linux paths:
+
+```bash
+which node
+which npm
+```
+
+When using `nvm`, they should normally resolve somewhere under:
+
+```text
+~/.nvm/
+```
+
+### Validate the development environment
+
+Run:
+
+```bash
+pre-commit run --all-files
+```
+
+Then start the complete application:
+
+```bash
+make dev
+```
+
+Open two browser windows, create a room in one, join it from the other, and make a move to verify the full browser → Socket.IO → backend → Redis → browser flow.

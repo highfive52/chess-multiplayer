@@ -35,8 +35,10 @@ __pycache__/
 .env
 *.env.local
 .env.*
+!.env.example
 
 # ==========================================
-# 4. MISCELLANEOUS (Global Match)
+# 5. MISCELLANEOUS (Global Match)
 # ==========================================
 docs/design/
+docs/plans/
