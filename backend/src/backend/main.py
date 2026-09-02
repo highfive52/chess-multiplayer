@@ -12,6 +12,11 @@ from backend.validator import (
 )
 import random
 import string
+import asyncio
+
+from backend.services.game_history import create_game_record, record_move
+from backend.services.chess_notation import board_from_authoritative
+from backend.repositories import games as games_repo
 
 # 1. Configure the Redis connection string (Defaulting to Docker localhost)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -217,6 +222,17 @@ async def handle_create_room(sid, data=None):
     # Assign creator to white by default
     game_state["players"]["white"] = user_id
 
+    # Create a durable game record for this live room
+    try:
+        game_id = await asyncio.to_thread(
+            create_game_record, room_code, "startpos", "live"
+        )
+        game_state["game_id"] = game_id
+    except Exception as e:
+        print(
+            f"[WARN] Could not create durable game record for Room [{room_code}]: {e}"
+        )
+
     await redis.set(redis_room_key, json.dumps(game_state))
     await sio.save_session(sid, {"user_id": user_id, "room_id": room_code})
     await sio.enter_room(sid, redis_room_key)
@@ -294,6 +310,16 @@ async def handle_propose_move(sid, data):
     move_to = data.get("to")
     f_row, f_col = move_from["row"], move_from["col"]
     t_row, t_col = move_to["row"], move_to["col"]
+
+    # Capture the authoritative pre-move state so notation logic can apply
+    # the move against the board as it was before mutation.
+    pre_move_auth_state = {
+        "board": json.loads(json.dumps(game_state["board"])),
+        "current_turn": game_state.get("current_turn"),
+        "castling_rights": json.loads(
+            json.dumps(game_state.get("castling_rights", {}))
+        ),
+    }
 
     # GEOMETRIC RULES ENGINE VALIDATION
     if not is_legal_move(
@@ -375,6 +401,30 @@ async def handle_propose_move(sid, data):
             game_state["status"] = "completed"
             game_state["winner"] = player_color
             print(f"[CHECKMATE] Room {room_code} finished. Winner: {player_color}")
+            # Persist completion metadata if we have a durable game id
+            try:
+                if "game_id" in game_state:
+                    # compute final FEN from authoritative board
+                    auth_state = {
+                        "board": game_state["board"],
+                        "current_turn": game_state.get("current_turn"),
+                        "castling_rights": game_state.get("castling_rights"),
+                    }
+                    board = board_from_authoritative(auth_state)
+                    final_fen = board.fen()
+                    result = player_color
+                    asyncio.create_task(
+                        asyncio.to_thread(
+                            games_repo.complete_game,
+                            game_state["game_id"],
+                            result,
+                            final_fen,
+                        )
+                    )
+            except Exception as e:
+                print(
+                    f"[HISTORY WARN] failed to persist completion for Room [{room_code}]: {e}"
+                )
     else:
         game_state["check_status"] = None
 
@@ -385,6 +435,28 @@ async def handle_propose_move(sid, data):
             game_state["status"] = "completed"
             game_state["winner"] = "draw"
             print(f"[STALEMATE] Room {room_code} finished in a draw.")
+            try:
+                if "game_id" in game_state:
+                    auth_state = {
+                        "board": game_state["board"],
+                        "current_turn": game_state.get("current_turn"),
+                        "castling_rights": game_state.get("castling_rights"),
+                    }
+                    board = board_from_authoritative(auth_state)
+                    final_fen = board.fen()
+                    result = "draw"
+                    asyncio.create_task(
+                        asyncio.to_thread(
+                            games_repo.complete_game,
+                            game_state["game_id"],
+                            result,
+                            final_fen,
+                        )
+                    )
+            except Exception as e:
+                print(
+                    f"[HISTORY WARN] failed to persist completion for Room [{room_code}]: {e}"
+                )
 
     # 5. Advance Turn only if match continues active
     if game_state["status"] == "active":
@@ -392,6 +464,43 @@ async def handle_propose_move(sid, data):
 
     # 6. SAVE Authoritative payload
     await redis.set(redis_room_key, json.dumps(game_state))
+
+    # 6.5 Persist history asynchronously (best-effort). We derive an authoritative
+    # shape that our notation adapter understands.
+    async def _persist_move_and_log(
+        game_id, auth_state, from_sq, to_sq, promotion, room_code
+    ):
+        try:
+            res = await asyncio.to_thread(
+                record_move, game_id, auth_state, from_sq, to_sq, promotion
+            )
+            print(
+                f"[HISTORY] persisted move id={res.get('id')} ply={res.get('ply')} room={room_code}"
+            )
+        except Exception as e:
+            print(f"[HISTORY ERR] failed to persist move for Room [{room_code}]: {e}")
+
+    try:
+        if "game_id" in game_state:
+            # Use the captured pre-move authoritative state so the notation
+            # adapter can compute SAN/FEN by applying the move against the
+            # board as it was before mutation.
+            auth_state = pre_move_auth_state
+            # run blocking DB work in a thread, and log any errors
+            asyncio.create_task(
+                _persist_move_and_log(
+                    game_state["game_id"],
+                    auth_state,
+                    (f_row, f_col),
+                    (t_row, t_col),
+                    None,
+                    room_code,
+                )
+            )
+    except Exception as e:
+        print(
+            f"[HISTORY WARN] failed to schedule persistence for Room [{room_code}]: {e}"
+        )
 
     # 7. BROADCAST updated status array downstream
     print(
