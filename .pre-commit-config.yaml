@@ -38,3 +38,10 @@ repos:
         language: system
         pass_filenames: false
         files: ^frontend/
+
+      - id: frontend-tests
+        name: Frontend tests
+        entry: npm --prefix frontend run test
+        language: system
+        pass_filenames: false
+        files: ^frontend/
