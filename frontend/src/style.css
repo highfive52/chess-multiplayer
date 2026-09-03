@@ -52,7 +52,15 @@
 /* --- APP CORE WRAPPERS --- */
 #app-container {
   width: 100%;
-  max-width: 600px;
+  /* Allow space for the left pane (600px) + gap + move-history (320px) */
+  max-width: 960px;
+}
+
+/* Include border/padding in element size to prevent overflow (board vs HUD) */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 /* --- HEADS UP DISPLAY (HUD) --- */
@@ -107,6 +115,83 @@ body {
   box-sizing: border-box;
   display: flex;
   justify-content: center;
+}
+
+/* Replay layout: left pane (HUD + board) and right-side move history */
+#replay-wrapper {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+#left-pane {
+  width: 600px;
+  min-width: 600px; /* prevent shrinking so live/replay views look identical */
+  box-sizing: border-box;
+}
+
+#replay-wrapper {
+  justify-content: center;
+}
+
+#move-history {
+  width: 320px;
+  max-height: calc(100vh - 120px);
+  background: #071026;
+  border: 1px solid #27455a;
+  border-radius: 8px;
+  color: #e6eef6;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+#move-list {
+  max-height: calc(100vh - 176px);
+  overflow-y: auto;
+}
+
+.move-item {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(39, 68, 90, 0.12);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.move-item .san {
+  flex: 1;
+  text-align: left;
+}
+
+.move-item .ply {
+  color: #7f98a9;
+  margin-right: 12px;
+  min-width: 40px;
+  text-align: right;
+}
+
+.move-item.current {
+  background: rgba(56, 189, 248, 0.06);
+  border-left: 4px solid #38bdf8;
+}
+
+.move-item:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+@media (max-width: 980px) {
+  /* Stack on small screens */
+  #replay-wrapper {
+    flex-direction: column;
+  }
+  #left-pane {
+    width: 100%;
+  }
+  #move-history {
+    width: 100%;
+  }
 }
 
 #chess-board {

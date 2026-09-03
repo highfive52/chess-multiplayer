@@ -246,6 +246,8 @@ document.addEventListener("DOMContentLoaded", () => {
       replayStatus.textContent = `${left} / ${right}`;
       // UI status updated
     }
+    // update move history highlighting
+    renderMoveHistory();
   }
 
   // Replay modal elements (non-blocking)
@@ -302,6 +304,10 @@ document.addEventListener("DOMContentLoaded", () => {
         isReplayMode = true;
         // show the game view so the board and controls are visible while replaying
         showGameRoom();
+        // show move history panel and render list
+        const mh = document.getElementById("move-history");
+        if (mh) mh.classList.remove("hidden");
+        renderMoveHistory();
         // hide modal after successful load
         if (replayModal) replayModal.classList.add("hidden");
       } catch (e: unknown) {
@@ -355,6 +361,10 @@ document.addEventListener("DOMContentLoaded", () => {
             isReplayMode = true;
             // show the game view so the board and controls are visible while replaying
             showGameRoom();
+            // show move history panel and render list
+            const mh = document.getElementById("move-history");
+            if (mh) mh.classList.remove("hidden");
+            renderMoveHistory();
             if (replayModal) replayModal.classList.add("hidden");
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -377,6 +387,45 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         replayList.textContent = `Error: ${msg}`;
       }
+    }
+  }
+
+  // --- Move history rendering & interactions ---
+  function renderMoveHistory() {
+    const container = document.getElementById("move-list");
+    const mh = document.getElementById("move-history");
+    if (!container || !replay.doc) return;
+    container.innerHTML = "";
+    const moves = replay.doc.moves;
+    moves.forEach((m, idx) => {
+      const item = document.createElement("div");
+      item.className = "move-item";
+      if (idx === replay.currentPly) item.classList.add("current");
+
+      const plyEl = document.createElement("div");
+      plyEl.className = "ply";
+      plyEl.textContent = String(m.ply);
+
+      const sanEl = document.createElement("div");
+      sanEl.className = "san";
+      sanEl.textContent = m.ply === 0 ? "Start" : m.san || "";
+
+      item.appendChild(plyEl);
+      item.appendChild(sanEl);
+
+      item.addEventListener("click", () => {
+        // Jump by API ply value so direct ply lookups work
+        replay.jumpTo(m.ply);
+        updateReplayView();
+      });
+
+      container.appendChild(item);
+    });
+    // ensure move-history visible when populated
+    if (mh && !mh.classList.contains("hidden")) {
+      // scroll current into view
+      const current = container.querySelector(".move-item.current") as HTMLElement | null;
+      if (current) current.scrollIntoView({ block: "nearest" });
     }
   }
 
@@ -419,6 +468,9 @@ document.addEventListener("DOMContentLoaded", () => {
       } catch {
         // ignore if clear not present
       }
+      // hide move history panel
+      const mh = document.getElementById("move-history");
+      if (mh) mh.classList.add("hidden");
       if (replayModal) replayModal.classList.add("hidden");
       showLobby();
       showToast("Exited replay mode — back to lobby");

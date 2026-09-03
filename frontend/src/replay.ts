@@ -121,6 +121,15 @@ export class ReplayController {
 
   jumpTo(ply: number) {
     if (!this.doc) return;
+    // Try to interpret the argument as an API `ply` value and map it
+    // to the corresponding move array index. This keeps UI callers
+    // able to pass either a ply number or an index.
+    const idx = this.doc.moves.findIndex((m) => m.ply === ply);
+    if (idx >= 0) {
+      this.currentPly = idx;
+      return;
+    }
+    // Fallback: treat as an index and clamp into bounds
     const last = Math.max(0, this.doc.moves.length - 1);
     const clamped = Math.max(0, Math.min(last, Math.floor(ply)));
     this.currentPly = clamped;

@@ -68,44 +68,55 @@
     </div>
 
     <div id="app-container" class="hidden">
-      <div id="match-hud">
-        <div class="hud-item">
-          Room: <span id="room-display" style="font-weight: bold; color: #38bdf8">----</span>
+      <div id="replay-wrapper">
+        <div id="left-pane">
+          <div id="match-hud">
+            <div class="hud-item">
+              Room: <span id="room-display" style="font-weight: bold; color: #38bdf8">----</span>
+            </div>
+            <div class="hud-item">Identity: <span id="player-identity">Connecting...</span></div>
+            <div class="hud-item">Status: <span id="turn-indicator">Waiting...</span></div>
+            <div class="hud-item hud-controls">
+              <span id="conn-status" class="conn-status disconnected">Disconnected</span>
+              <button id="btn-retry" class="btn-small">Retry</button>
+            </div>
+          </div>
+
+          <div id="chess-board">
+            <div id="board-loader">Synchronizing Live Board State...</div>
+          </div>
+
+          <!-- Bottom action bar below the board -->
+          <div id="bottom-action-bar" class="bottom-bar">
+            <button id="btn-copy-link" class="btn-small">Copy Link</button>
+            <button id="btn-settings" class="btn-small">Settings</button>
+            <button id="btn-open-replay" class="btn-small">Open Replay</button>
+          </div>
+
+          <div id="replay-controls" class="bottom-bar hidden">
+            <button id="btn-first" class="btn-small">First</button>
+            <button id="btn-prev" class="btn-small">Previous</button>
+            <span id="replay-status">ply 0 / 0</span>
+            <button id="btn-next" class="btn-small">Next</button>
+            <button id="btn-last" class="btn-small">Last</button>
+            <input id="replay-jump" type="number" min="0" style="width: 72px; margin-left: 8px" />
+            <button id="btn-jump" class="btn-small">Jump</button>
+            <button
+              id="btn-exit-replay"
+              class="btn-small"
+              style="margin-left: 8px; background: #ef4444; color: white"
+            >
+              Exit Replay
+            </button>
+          </div>
         </div>
-        <div class="hud-item">Identity: <span id="player-identity">Connecting...</span></div>
-        <div class="hud-item">Status: <span id="turn-indicator">Waiting...</span></div>
-        <div class="hud-item hud-controls">
-          <span id="conn-status" class="conn-status disconnected">Disconnected</span>
-          <button id="btn-retry" class="btn-small">Retry</button>
-        </div>
-      </div>
 
-      <div id="chess-board">
-        <div id="board-loader">Synchronizing Live Board State...</div>
-      </div>
-
-      <!-- Bottom action bar below the board -->
-      <div id="bottom-action-bar" class="bottom-bar">
-        <button id="btn-copy-link" class="btn-small">Copy Link</button>
-        <button id="btn-settings" class="btn-small">Settings</button>
-        <button id="btn-open-replay" class="btn-small">Open Replay</button>
-      </div>
-
-      <div id="replay-controls" class="bottom-bar hidden">
-        <button id="btn-first" class="btn-small">First</button>
-        <button id="btn-prev" class="btn-small">Previous</button>
-        <span id="replay-status">ply 0 / 0</span>
-        <button id="btn-next" class="btn-small">Next</button>
-        <button id="btn-last" class="btn-small">Last</button>
-        <input id="replay-jump" type="number" min="0" style="width: 72px; margin-left: 8px" />
-        <button id="btn-jump" class="btn-small">Jump</button>
-        <button
-          id="btn-exit-replay"
-          class="btn-small"
-          style="margin-left: 8px; background: #ef4444; color: white"
-        >
-          Exit Replay
-        </button>
+        <aside id="move-history" class="hidden">
+          <header style="padding: 12px; border-bottom: 1px solid #263244">
+            <h4 style="margin: 0; font-size: 1rem">Move History</h4>
+          </header>
+          <div id="move-list" style="padding: 8px; overflow: auto"></div>
+        </aside>
       </div>
     </div>
   </div>
