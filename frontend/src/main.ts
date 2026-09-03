@@ -227,6 +227,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnPrev = document.getElementById("btn-prev");
   const btnNext = document.getElementById("btn-next");
   const btnLast = document.getElementById("btn-last");
+  const btnPlay = document.getElementById("btn-play");
+  const selectSpeed = document.getElementById("select-speed") as HTMLSelectElement | null;
   const btnJump = document.getElementById("btn-jump");
   const inputJump = document.getElementById("replay-jump") as HTMLInputElement | null;
   const replayStatus = document.getElementById("replay-status");
@@ -414,6 +416,14 @@ document.addEventListener("DOMContentLoaded", () => {
       item.appendChild(sanEl);
 
       item.addEventListener("click", () => {
+        // Stop playback when user manually interacts
+        try {
+          replay.pause();
+        } catch (e) {
+          // ignore: best-effort pause when interacting manually
+          void e;
+        }
+        if (btnPlay) btnPlay.textContent = "Play";
         // Jump by API ply value so direct ply lookups work
         replay.jumpTo(m.ply);
         updateReplayView();
@@ -431,26 +441,41 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (btnFirst)
     btnFirst.addEventListener("click", () => {
+      replay.pause();
+      if (btnPlay) btnPlay.textContent = "Play";
       replay.first();
       updateReplayView();
     });
   if (btnPrev)
     btnPrev.addEventListener("click", () => {
+      replay.pause();
+      if (btnPlay) btnPlay.textContent = "Play";
       replay.prev();
       updateReplayView();
     });
   if (btnNext)
     btnNext.addEventListener("click", () => {
+      replay.pause();
+      if (btnPlay) btnPlay.textContent = "Play";
       replay.next();
       updateReplayView();
     });
   if (btnLast)
     btnLast.addEventListener("click", () => {
+      replay.pause();
+      if (btnPlay) btnPlay.textContent = "Play";
       replay.last();
       updateReplayView();
     });
   if (btnJump && inputJump)
     btnJump.addEventListener("click", () => {
+      try {
+        replay.pause();
+      } catch (e) {
+        // ignore: best-effort pause when using jump control
+        void e;
+      }
+      if (btnPlay) btnPlay.textContent = "Play";
       replay.jumpTo(Number(inputJump.value || 0));
       updateReplayView();
     });
@@ -471,9 +496,40 @@ document.addEventListener("DOMContentLoaded", () => {
       // hide move history panel
       const mh = document.getElementById("move-history");
       if (mh) mh.classList.add("hidden");
+      // ensure playback stopped
+      try {
+        replay.pause();
+      } catch (e) {
+        // ignore: ensure playback stopped on exit
+        void e;
+      }
+      if (btnPlay) btnPlay.textContent = "Play";
       if (replayModal) replayModal.classList.add("hidden");
       showLobby();
       showToast("Exited replay mode — back to lobby");
+    });
+  }
+
+  // Play/Pause wiring
+  if (btnPlay) {
+    btnPlay.addEventListener("click", () => {
+      if (!replay.doc) return;
+      if (replay.isPlaying()) {
+        replay.pause();
+        btnPlay.textContent = "Play";
+        return;
+      }
+      // start playback with selected speed
+      const ms = selectSpeed ? Number(selectSpeed.value || 1000) : 1000;
+      replay.play(ms, () => {
+        updateReplayView();
+        if (!replay.isPlaying()) {
+          if (btnPlay) btnPlay.textContent = "Play";
+        } else {
+          if (btnPlay) btnPlay.textContent = "Pause";
+        }
+      });
+      btnPlay.textContent = "Pause";
     });
   }
 });

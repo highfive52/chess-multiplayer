@@ -20,6 +20,8 @@ export class ReplayController {
   baseUrl: string;
   doc: ReplayDoc | null = null;
   currentPly = 0;
+  private playbackTimer: number | null = null;
+  private playing: boolean = false;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -139,6 +141,41 @@ export class ReplayController {
   clear() {
     this.doc = null;
     this.currentPly = 0;
+  }
+
+  // Playback controls: start automatic advancement at `intervalMs` milliseconds.
+  // Accepts an optional `onTick` callback invoked after each advance (or when playback stops).
+  play(intervalMs: number = 1000, onTick?: () => void) {
+    if (this.playbackTimer != null) return; // already playing
+    this.playing = true;
+    this.playbackTimer = window.setInterval(() => {
+      if (!this.doc) {
+        this.pause();
+        if (onTick) onTick();
+        return;
+      }
+      const last = Math.max(0, this.doc.moves.length - 1);
+      if (this.currentPly >= last) {
+        // reached the end — stop playback
+        this.pause();
+        if (onTick) onTick();
+        return;
+      }
+      this.next();
+      if (onTick) onTick();
+    }, intervalMs) as unknown as number;
+  }
+
+  pause() {
+    if (this.playbackTimer != null) {
+      clearInterval(this.playbackTimer);
+      this.playbackTimer = null;
+    }
+    this.playing = false;
+  }
+
+  isPlaying(): boolean {
+    return this.playing;
   }
 }
 
