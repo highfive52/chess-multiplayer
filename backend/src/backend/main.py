@@ -1,6 +1,7 @@
 import json
 import os
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import socketio
 import redis.asyncio as aioredis
 from backend.validator import (
@@ -15,8 +16,11 @@ import string
 import asyncio
 
 from backend.services.game_history import create_game_record, record_move
+from backend.services import replay as replay_service
+from backend.schemas.replay import ReplayDocument
 from backend.services.chess_notation import board_from_authoritative
 from backend.repositories import games as games_repo
+import traceback
 
 # 1. Configure the Redis connection string (Defaulting to Docker localhost)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -26,6 +30,16 @@ redis = aioredis.from_url(REDIS_URL, decode_responses=True)
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 app = FastAPI()
 asgi_app = socketio.ASGIApp(sio, app)
+
+# CORS for local development (allow Vite dev server)
+app.add_middleware(
+    CORSMiddleware,
+    # Allow Vite dev server origins used in local development (5173, 5175)
+    allow_origins=["http://localhost:5173", "http://localhost:5175"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def create_initial_board():
@@ -105,6 +119,28 @@ async def health_check():
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return Response(status_code=204)
+
+
+@app.get("/games/{game_id}/replay", response_model=ReplayDocument)
+async def get_game_replay(game_id: str):
+    try:
+        doc = await asyncio.to_thread(replay_service.get_replay_document, game_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="game not found")
+    return doc
+
+
+@app.get("/games")
+async def list_games(status: str | None = None, limit: int = 50):
+    try:
+        docs = await asyncio.to_thread(games_repo.list_games, status, limit)
+        return docs
+    except Exception as e:
+        # Log a full traceback to the server console for debugging
+        tb = traceback.format_exc()
+        print("[ERROR] list_games failure:\n", tb)
+        # Surface the error message in the response for local dev visibility
+        raise HTTPException(status_code=500, detail=f"unable to list games: {e}")
 
 
 # --- TRANSIT HANDSHAKE ---

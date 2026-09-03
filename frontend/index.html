@@ -1,3 +1,4 @@
+<!doctype html>
 <body>
   <div id="server-loader">
     <div class="spinner"></div>
@@ -30,6 +31,39 @@
           />
           <button id="btn-join" class="btn-secondary">Join Game</button>
         </div>
+        <div class="lobby-divider">
+          <span>OR</span>
+        </div>
+        <div style="margin-top: 12px; text-align: center">
+          <button id="btn-open-replay-lobby" class="btn-secondary">Open Replay</button>
+        </div>
+      </div>
+      <!-- Replay panel placed under lobby-card -->
+      <div id="replay-modal" class="hidden">
+        <div class="modal-card">
+          <header>
+            <h3>Load Replay</h3>
+            <button id="btn-close-replay-modal" class="btn-close">Close</button>
+          </header>
+          <section>
+            <label for="replay-game-id">Game ID</label>
+            <input
+              id="replay-game-id"
+              type="text"
+              placeholder="Enter game UUID or id"
+              style="width: 100%"
+            />
+            <div
+              id="replay-error"
+              class="note error hidden"
+              style="margin-top: 8px; color: #dc2626"
+            ></div>
+            <div id="replay-list" style="margin-top: 12px; max-height: 240px; overflow: auto"></div>
+            <div style="margin-top: 8px; text-align: right">
+              <button id="btn-load-replay" class="btn-primary">Load</button>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
 
@@ -54,6 +88,24 @@
       <div id="bottom-action-bar" class="bottom-bar">
         <button id="btn-copy-link" class="btn-small">Copy Link</button>
         <button id="btn-settings" class="btn-small">Settings</button>
+        <button id="btn-open-replay" class="btn-small">Open Replay</button>
+      </div>
+
+      <div id="replay-controls" class="bottom-bar hidden">
+        <button id="btn-first" class="btn-small">First</button>
+        <button id="btn-prev" class="btn-small">Previous</button>
+        <span id="replay-status">ply 0 / 0</span>
+        <button id="btn-next" class="btn-small">Next</button>
+        <button id="btn-last" class="btn-small">Last</button>
+        <input id="replay-jump" type="number" min="0" style="width: 72px; margin-left: 8px" />
+        <button id="btn-jump" class="btn-small">Jump</button>
+        <button
+          id="btn-exit-replay"
+          class="btn-small"
+          style="margin-left: 8px; background: #ef4444; color: white"
+        >
+          Exit Replay
+        </button>
       </div>
     </div>
   </div>
@@ -79,6 +131,8 @@
       </section>
     </div>
   </div>
+
+  <!-- Replay Load Modal -->
 
   <script type="module" src="/src/main.ts"></script>
 </body>

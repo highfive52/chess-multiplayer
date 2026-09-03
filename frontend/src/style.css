@@ -299,6 +299,21 @@ body {
   z-index: 10000;
 }
 
+/* Inline replay panel placed inside lobby card (not a global overlay) */
+#replay-modal {
+  position: relative;
+  display: block;
+  background: transparent;
+  margin-top: 12px;
+  z-index: 5000;
+}
+
+#replay-modal .modal-card {
+  width: 100%;
+  max-width: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
 .modal-card {
   background: #0f1724;
   border: 1px solid #263244;

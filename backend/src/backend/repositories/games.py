@@ -61,3 +61,24 @@ def complete_game(
             conn.commit()
     finally:
         conn.close()
+
+
+def list_games(status: Optional[str] = None, limit: int = 50):
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            if status:
+                cur.execute(
+                    "SELECT id, room_code, status, created_at FROM games WHERE status = %s ORDER BY created_at DESC LIMIT %s",
+                    (status, limit),
+                )
+            else:
+                cur.execute(
+                    "SELECT id, room_code, status, created_at FROM games ORDER BY created_at DESC LIMIT %s",
+                    (limit,),
+                )
+            rows = cur.fetchall()
+            cols = [d.name for d in cur.description]
+            return [dict(zip(cols, r)) for r in rows]
+    finally:
+        conn.close()

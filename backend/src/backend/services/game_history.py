@@ -28,8 +28,11 @@ def create_game_record(
     room_code: Optional[str], initial_fen: Optional[str], source_type: str = "live"
 ) -> str:
     """Create a game record and return its id."""
-    if initial_fen is None:
-        initial_fen = "startpos"
+    # Normalize the 'startpos' token to a full FEN string so downstream
+    # consumers (replay clients) receive a concrete FEN for ply 0.
+    START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    if initial_fen is None or initial_fen == "startpos":
+        initial_fen = START_FEN
     return games_repo.create_game(room_code, initial_fen, source_type)
 
 

@@ -6,6 +6,7 @@ export default defineConfig({
   base: "/chess-multiplayer/",
   server: {
     port: 5173,
+    strictPort: true, // fail if port is in use instead of auto-incrementing
     host: true, // Allows testing across local network devices if needed
   },
 });

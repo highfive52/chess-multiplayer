@@ -4,6 +4,7 @@ import { createInitialBoard } from "./boardState";
 import { renderBoard } from "./renderer";
 import type { Position, BoardMatrix } from "./types";
 import "./style.css";
+import ReplayController from "./replay";
 
 console.log("TypeScript environment up and running!");
 
@@ -24,6 +25,8 @@ let selectedSquare: Position | null = null;
 let myRole: "white" | "black" | "spectator" | null = null;
 let currentMatchStatus: "active" | "completed" = "active";
 let currentTurn: string = "white";
+// When true, suppress live-room creation and all outbound move events.
+let isReplayMode = false;
 
 // --- USER PREFERENCES ---
 type InputMode = "drag" | "click" | "hybrid";
@@ -94,12 +97,21 @@ function showLobby() {
   if (serverLoader) serverLoader.classList.add("hidden");
   if (appContainer) appContainer.classList.add("hidden");
   if (lobbyScreen) lobbyScreen.classList.remove("hidden");
+  updateOpenReplayVisibility(false);
 }
 
 function showGameRoom() {
   if (serverLoader) serverLoader.classList.add("hidden");
   if (lobbyScreen) lobbyScreen.classList.add("hidden");
   if (appContainer) appContainer.classList.remove("hidden");
+  updateOpenReplayVisibility(true);
+}
+
+// Hide the bottom-page "Open Replay" while inside an active game; show it on the lobby
+function updateOpenReplayVisibility(inGame: boolean) {
+  const btn = document.getElementById("btn-open-replay");
+  if (!btn) return;
+  btn.style.display = inGame ? "none" : "inline-block";
 }
 
 // --- SAFE DOM EVENT LIFECYCLE WRAPPER ---
@@ -107,6 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Grab Lobby Action Buttons safely on ready state
   const btnCreate = document.getElementById("btn-create") as HTMLButtonElement;
   const btnJoin = document.getElementById("btn-join") as HTMLButtonElement;
+  const btnOpenReplayLobby = document.getElementById("btn-open-replay-lobby");
   const inputRoomCode = document.getElementById("input-room-code") as HTMLInputElement;
 
   // Initialize Modal Dropdown Values on Bootup
@@ -142,6 +155,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- BIND BUTTON UI HANDLERS FOR LOBBY TRANSACTIONS ---
   if (btnCreate) {
     btnCreate.addEventListener("click", () => {
+      if (isReplayMode) {
+        showToast("Exit replay mode before creating a game");
+        return;
+      }
       if (!socket.connected) {
         alert("Not connected to backend. Trying to reconnect...");
         try {
@@ -157,6 +174,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (btnJoin && inputRoomCode) {
     btnJoin.addEventListener("click", () => {
+      if (isReplayMode) {
+        showToast("Exit replay mode before joining a game");
+        return;
+      }
       const code = inputRoomCode.value.trim().toUpperCase();
       if (code.length === 4) {
         socket.emit("join_room", { roomId: code });
@@ -196,6 +217,211 @@ document.addEventListener("DOMContentLoaded", () => {
       } catch {
         showToast("Unable to copy link");
       }
+    });
+  }
+
+  // --- Replay Controls wiring ---
+  const btnOpenReplay = document.getElementById("btn-open-replay");
+  const replayControls = document.getElementById("replay-controls");
+  const btnFirst = document.getElementById("btn-first");
+  const btnPrev = document.getElementById("btn-prev");
+  const btnNext = document.getElementById("btn-next");
+  const btnLast = document.getElementById("btn-last");
+  const btnJump = document.getElementById("btn-jump");
+  const inputJump = document.getElementById("replay-jump") as HTMLInputElement | null;
+  const replayStatus = document.getElementById("replay-status");
+  const btnExitReplay = document.getElementById("btn-exit-replay");
+
+  const replay = new ReplayController(BACKEND_URL);
+
+  function updateReplayView() {
+    const boardMatrix = replay.getCurrentBoard();
+    // If replay returns null (invalid/missing FEN), render a vanilla initial board
+    // so First/Previous/Jump-to-0 always show the starting position.
+    const toRender = boardMatrix ?? createInitialBoard();
+    renderBoard(toRender, null, "white");
+    if (replayStatus) {
+      const left = replay.getDisplayPly();
+      const right = replay.getMaxPly();
+      replayStatus.textContent = `${left} / ${right}`;
+      // UI status updated
+    }
+  }
+
+  // Replay modal elements (non-blocking)
+  const replayModal = document.getElementById("replay-modal");
+  const replayModalInput = document.getElementById("replay-game-id") as HTMLInputElement | null;
+  const btnLoadReplay = document.getElementById("btn-load-replay");
+  const replayError = document.getElementById("replay-error");
+  const btnCloseReplayModal = document.getElementById("btn-close-replay-modal");
+  const replayList = document.getElementById("replay-list");
+
+  if (btnOpenReplay) {
+    btnOpenReplay.addEventListener("click", () => {
+      if (replayModal) replayModal.classList.remove("hidden");
+      if (replayModalInput) replayModalInput.focus();
+      // load available games into the modal
+      loadAvailableGames();
+    });
+  }
+
+  if (btnOpenReplayLobby) {
+    btnOpenReplayLobby.addEventListener("click", () => {
+      if (replayModal) replayModal.classList.remove("hidden");
+      if (replayModalInput) replayModalInput.focus();
+      // load available games into the modal
+      loadAvailableGames();
+    });
+  }
+
+  if (btnCloseReplayModal && replayModal) {
+    btnCloseReplayModal.addEventListener("click", () => replayModal.classList.add("hidden"));
+  }
+
+  if (btnLoadReplay && replayModalInput) {
+    btnLoadReplay.addEventListener("click", async () => {
+      const gid = replayModalInput.value.trim();
+      if (!gid) return;
+      try {
+        await replay.load(gid);
+        updateReplayView();
+        // If the loaded replay doesn't provide a valid board FEN, show an inline error
+        const boardMatrix = replay.getCurrentBoard();
+        if (!boardMatrix) {
+          const msg = "Replay loaded but starting position is unavailable.";
+          if (replayError) {
+            replayError.textContent = msg;
+            replayError.classList.remove("hidden");
+          } else {
+            alert(msg);
+          }
+          return;
+        }
+        if (replayControls) replayControls.classList.remove("hidden");
+        // Enter replay mode: disable live-room interactions and local piece movement
+        isReplayMode = true;
+        // show the game view so the board and controls are visible while replaying
+        showGameRoom();
+        // hide modal after successful load
+        if (replayModal) replayModal.classList.add("hidden");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (replayError) {
+          replayError.textContent = msg;
+          replayError.classList.remove("hidden");
+        } else {
+          alert(`Failed to load replay: ${msg}`);
+        }
+      }
+    });
+  }
+
+  async function loadAvailableGames() {
+    if (!replayList) return;
+    replayList.innerHTML = "Loading...";
+    try {
+      const resp = await fetch(`${BACKEND_URL}/games?status=active`);
+      if (!resp.ok) throw new Error(`status=${resp.status}`);
+      const docs = (await resp.json()) as Array<{ id: string; room_code?: string }>;
+      if (!Array.isArray(docs) || docs.length === 0) {
+        replayList.innerHTML = '<div class="note">No active games found.</div>';
+        return;
+      }
+      replayList.innerHTML = "";
+      docs.forEach((g) => {
+        const btn = document.createElement("button");
+        btn.className = "btn-small";
+        btn.style.display = "block";
+        btn.style.width = "100%";
+        btn.style.marginBottom = "6px";
+        btn.textContent = `${g.room_code ?? "----"} — ${g.id}`;
+        btn.addEventListener("click", async () => {
+          try {
+            await replay.load(g.id);
+            updateReplayView();
+            const boardMatrix = replay.getCurrentBoard();
+            if (!boardMatrix) {
+              const msg = "Replay loaded but starting position is unavailable.";
+              if (replayError) {
+                replayError.textContent = msg;
+                replayError.classList.remove("hidden");
+              } else {
+                alert(msg);
+              }
+              return;
+            }
+            if (replayControls) replayControls.classList.remove("hidden");
+            // Enter replay mode: disable live-room interactions and local piece movement
+            isReplayMode = true;
+            // show the game view so the board and controls are visible while replaying
+            showGameRoom();
+            if (replayModal) replayModal.classList.add("hidden");
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (replayError) {
+              replayError.textContent = msg;
+              replayError.classList.remove("hidden");
+            } else {
+              alert(msg);
+            }
+          }
+        });
+        replayList.appendChild(btn);
+      });
+    } catch (err: unknown) {
+      replayList.innerHTML = "";
+      const msg = err instanceof Error ? err.message : String(err);
+      if (replayError) {
+        replayError.textContent = msg;
+        replayError.classList.remove("hidden");
+      } else {
+        replayList.textContent = `Error: ${msg}`;
+      }
+    }
+  }
+
+  if (btnFirst)
+    btnFirst.addEventListener("click", () => {
+      replay.first();
+      updateReplayView();
+    });
+  if (btnPrev)
+    btnPrev.addEventListener("click", () => {
+      replay.prev();
+      updateReplayView();
+    });
+  if (btnNext)
+    btnNext.addEventListener("click", () => {
+      replay.next();
+      updateReplayView();
+    });
+  if (btnLast)
+    btnLast.addEventListener("click", () => {
+      replay.last();
+      updateReplayView();
+    });
+  if (btnJump && inputJump)
+    btnJump.addEventListener("click", () => {
+      replay.jumpTo(Number(inputJump.value || 0));
+      updateReplayView();
+    });
+  if (btnExitReplay) {
+    btnExitReplay.addEventListener("click", () => {
+      isReplayMode = false;
+      if (replayControls) replayControls.classList.add("hidden");
+      if (replayError) {
+        replayError.textContent = "";
+        replayError.classList.add("hidden");
+      }
+      // Clear replay state and return to the lobby main screen
+      try {
+        replay.clear();
+      } catch {
+        // ignore if clear not present
+      }
+      if (replayModal) replayModal.classList.add("hidden");
+      showLobby();
+      showToast("Exited replay mode — back to lobby");
     });
   }
 });
@@ -368,7 +594,12 @@ let isDragging = false;
 
 if (boardContainer) {
   boardContainer.addEventListener("pointerdown", (event) => {
-    if (currentMatchStatus === "completed" || myRole === "spectator" || myRole !== currentTurn)
+    if (
+      currentMatchStatus === "completed" ||
+      myRole === "spectator" ||
+      myRole !== currentTurn ||
+      isReplayMode
+    )
       return;
 
     const target = event.target as HTMLElement;
@@ -537,6 +768,7 @@ if (boardContainer) {
   }
 
   function handleSquareClick(row: number, col: number) {
+    if (isReplayMode) return; // prevent proposing moves while replaying
     if (isDragging) return; // ignore clicks while dragging
     const clickedPiece = board[row][col];
 
