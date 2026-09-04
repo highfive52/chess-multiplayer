@@ -4,7 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ReplayMove(BaseModel):
@@ -16,13 +16,12 @@ class ReplayMove(BaseModel):
     promotion: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ReplayDocument(BaseModel):
     game_id: UUID
-    room_code: str
+    room_code: Optional[str] = None
     source_type: Optional[str] = None
     initial_fen: Optional[str] = None
     final_fen: Optional[str] = None
@@ -34,5 +33,4 @@ class ReplayDocument(BaseModel):
     updated_at: datetime
     moves: List[ReplayMove] = []
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

@@ -1,0 +1,8 @@
+[Event "Castling"]
+[SetUp "1"]
+[FEN "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"]
+[White "Alice"]
+[Black "Bob"]
+[Result "1/2-1/2"]
+
+1. O-O O-O-O 1/2-1/2

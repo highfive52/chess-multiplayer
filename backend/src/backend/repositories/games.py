@@ -63,18 +63,18 @@ def complete_game(
         conn.close()
 
 
-def list_games(status: Optional[str] = None, limit: int = 50):
+def list_games(source_type: Optional[str] = None, limit: int = 50):
     conn = connect()
     try:
         with conn.cursor() as cur:
-            if status:
+            if source_type:
                 cur.execute(
-                    "SELECT id, room_code, status, created_at FROM games WHERE status = %s ORDER BY created_at DESC LIMIT %s",
-                    (status, limit),
+                    "SELECT id, room_code, source_type, created_at FROM games WHERE source_type = %s ORDER BY created_at DESC LIMIT %s",
+                    (source_type, limit),
                 )
             else:
                 cur.execute(
-                    "SELECT id, room_code, status, created_at FROM games ORDER BY created_at DESC LIMIT %s",
+                    "SELECT id, room_code, source_type, created_at FROM games ORDER BY created_at DESC LIMIT %s",
                     (limit,),
                 )
             rows = cur.fetchall()

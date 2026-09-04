@@ -1,6 +1,6 @@
 import json
 import os
-from fastapi import FastAPI, Response, HTTPException
+from fastapi import FastAPI, Response, HTTPException, UploadFile, File, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 import socketio
 import redis.asyncio as aioredis
@@ -21,6 +21,8 @@ from backend.schemas.replay import ReplayDocument
 from backend.services.chess_notation import board_from_authoritative
 from backend.repositories import games as games_repo
 import traceback
+from backend.services.pgn_import import import_pgn_text
+from backend.schemas.pgn_import import ImportResponse
 
 # 1. Configure the Redis connection string (Defaulting to Docker localhost)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -131,9 +133,9 @@ async def get_game_replay(game_id: str):
 
 
 @app.get("/games")
-async def list_games(status: str | None = None, limit: int = 50):
+async def list_games(source_type: str | None = None, limit: int = 50):
     try:
-        docs = await asyncio.to_thread(games_repo.list_games, status, limit)
+        docs = await asyncio.to_thread(games_repo.list_games, source_type, limit)
         return docs
     except Exception as e:
         # Log a full traceback to the server console for debugging
@@ -141,6 +143,53 @@ async def list_games(status: str | None = None, limit: int = 50):
         print("[ERROR] list_games failure:\n", tb)
         # Surface the error message in the response for local dev visibility
         raise HTTPException(status_code=500, detail=f"unable to list games: {e}")
+
+
+@app.post("/games/import/pgn", response_model=ImportResponse)
+async def import_pgn(
+    request: Request,
+    file: UploadFile | None = File(None),
+    text: str | None = Body(None),
+):
+    """Import PGN via file upload or raw text.
+
+    Accepts either a multipart file (`.pgn`) or a JSON/RAW body `text` field.
+    Returns an import summary describing imported and failed games.
+    """
+    # If a file was uploaded, read it first and avoid re-reading the request
+    # body (which is already consumed for multipart requests).
+    source_filename = None
+    if file is not None:
+        source_filename = file.filename
+        try:
+            raw = await file.read()
+            text = raw.decode("utf-8", errors="replace")
+        finally:
+            await file.close()
+
+    # If `text` is still not provided, try to parse JSON bodies or raw text.
+    if text is None:
+        try:
+            payload = await request.json()
+            if isinstance(payload, dict) and "text" in payload:
+                text = payload.get("text")
+            elif isinstance(payload, str):
+                text = payload
+        except Exception:
+            raw = await request.body()
+            text = raw.decode("utf-8", errors="replace").strip() or None
+
+    if file is None and (text is None or text.strip() == ""):
+        raise HTTPException(status_code=400, detail="Provide a .pgn file or PGN text")
+
+    try:
+        result = await asyncio.to_thread(import_pgn_text, text, source_filename)
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("[ERROR] import_pgn failure:\n", tb)
+        raise HTTPException(status_code=500, detail=f"import failed: {e}")
+
+    return result
 
 
 # --- TRANSIT HANDSHAKE ---

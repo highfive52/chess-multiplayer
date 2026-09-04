@@ -36,7 +36,7 @@ def test_replay_endpoint_integration():
     from backend import main as main_module
     from fastapi.testclient import TestClient
 
-    game_id = games_repo.create_game(None, "startpos", "live")
+    game_id = games_repo.create_game(None, "startpos", "test")
 
     try:
         # create a couple of moves

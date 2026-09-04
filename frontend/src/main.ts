@@ -6,6 +6,7 @@ import type { Position, BoardMatrix } from "./types";
 import "./style.css";
 import ReplayController from "./replay";
 import { renderMoveHistory as renderMoveHistoryModule } from "./replay-ui";
+import initImportUI from "./import-ui";
 
 console.log("TypeScript environment up and running!");
 
@@ -237,6 +238,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const replay = new ReplayController(BACKEND_URL);
 
+  // Initialize Import UI wiring
+  try {
+    initImportUI(BACKEND_URL);
+  } catch (e) {
+    console.warn("Import UI failed to initialize:", e);
+  }
+
   function updateReplayView() {
     const boardMatrix = replay.getCurrentBoard();
     // If replay returns null (invalid/missing FEN), render a vanilla initial board
@@ -261,6 +269,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Replay modal elements (non-blocking)
   const replayModal = document.getElementById("replay-modal");
   const replayModalInput = document.getElementById("replay-game-id") as HTMLInputElement | null;
+  const replaySourceType = document.getElementById(
+    "replay-source-type"
+  ) as HTMLSelectElement | null;
   const btnLoadReplay = document.getElementById("btn-load-replay");
   const replayError = document.getElementById("replay-error");
   const btnCloseReplayModal = document.getElementById("btn-close-replay-modal");
@@ -275,11 +286,32 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Import modal opener (mirror Open Replay behavior)
+  const btnOpenImport = document.getElementById("btn-open-import");
+  const importModal = document.getElementById("import-modal");
+  const importFileInput = document.getElementById("import-file") as HTMLInputElement | null;
+  const btnCloseImport = document.getElementById("btn-close-import");
+  if (btnOpenImport) {
+    btnOpenImport.addEventListener("click", () => {
+      if (importModal) importModal.classList.remove("hidden");
+      if (importFileInput) importFileInput.focus();
+    });
+  }
+  if (btnCloseImport && importModal) {
+    btnCloseImport.addEventListener("click", () => importModal.classList.add("hidden"));
+  }
+
   if (btnOpenReplayLobby) {
     btnOpenReplayLobby.addEventListener("click", () => {
       if (replayModal) replayModal.classList.remove("hidden");
       if (replayModalInput) replayModalInput.focus();
       // load available games into the modal
+      loadAvailableGames();
+    });
+  }
+
+  if (replaySourceType) {
+    replaySourceType.addEventListener("change", () => {
       loadAvailableGames();
     });
   }
@@ -334,11 +366,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!replayList) return;
     replayList.innerHTML = "Loading...";
     try {
-      const resp = await fetch(`${BACKEND_URL}/games?status=active`);
+      const sourceType = replaySourceType?.value ?? "live";
+      const url = sourceType
+        ? `${BACKEND_URL}/games?source_type=${encodeURIComponent(sourceType)}`
+        : `${BACKEND_URL}/games`;
+      const resp = await fetch(url);
       if (!resp.ok) throw new Error(`status=${resp.status}`);
       const docs = (await resp.json()) as Array<{ id: string; room_code?: string }>;
       if (!Array.isArray(docs) || docs.length === 0) {
-        replayList.innerHTML = '<div class="note">No active games found.</div>';
+        replayList.innerHTML = '<div class="note">No games found.</div>';
         return;
       }
       replayList.innerHTML = "";

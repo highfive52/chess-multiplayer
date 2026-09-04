@@ -1,0 +1,6 @@
+[Event "Comments and NAGs"]
+[White "Alice"]
+[Black "Bob"]
+[Result "1-0"]
+
+1. e4 {best by test} e5 2. Nf3 $1 Nc6 3. Bb5 a6 1-0

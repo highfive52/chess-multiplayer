@@ -36,6 +36,9 @@
         </div>
         <div style="margin-top: 12px; text-align: center">
           <button id="btn-open-replay-lobby" class="btn-secondary">Open Replay</button>
+          <button id="btn-open-import" class="btn-secondary" style="margin-left: 8px">
+            Import PGN
+          </button>
         </div>
       </div>
       <!-- Replay panel placed under lobby-card -->
@@ -53,6 +56,13 @@
               placeholder="Enter game UUID or id"
               style="width: 100%"
             />
+            <div style="margin-top: 8px">
+              <label for="replay-source-type">Source Type</label>
+              <select id="replay-source-type" style="width: 100%; margin-top: 4px">
+                <option value="live" selected>live</option>
+                <option value="pgn_import">pgn_import</option>
+              </select>
+            </div>
             <div
               id="replay-error"
               class="note error hidden"
@@ -65,8 +75,37 @@
           </section>
         </div>
       </div>
-    </div>
 
+      <!-- Import Modal (sibling to replay modal) -->
+      <div id="import-modal" class="hidden">
+        <div class="modal-card">
+          <header>
+            <h3>Import PGN</h3>
+            <button id="btn-close-import" class="btn-close">Close</button>
+          </header>
+          <section>
+            <label for="import-file">Upload .pgn file</label>
+            <input id="import-file" type="file" accept=".pgn,text/plain" />
+            <div style="margin-top: 8px">
+              <label for="import-text">Or paste PGN text</label>
+              <textarea
+                id="import-text"
+                rows="6"
+                style="width: 100%"
+                placeholder="Paste PGN text here"
+              ></textarea>
+            </div>
+            <div style="margin-top: 8px; text-align: right">
+              <button id="btn-import-submit" class="btn-primary">Import</button>
+            </div>
+            <div
+              id="import-result"
+              style="margin-top: 12px; max-height: 260px; overflow: auto"
+            ></div>
+          </section>
+        </div>
+      </div>
+    </div>
     <div id="app-container" class="hidden">
       <div id="replay-wrapper">
         <div id="left-pane">

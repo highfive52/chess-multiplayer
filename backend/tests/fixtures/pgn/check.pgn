@@ -1,0 +1,8 @@
+[Event "Check"]
+[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/8/3QK3 w - - 0 1"]
+[White "Alice"]
+[Black "Bob"]
+[Result "1-0"]
+
+1. Qh5+ 1-0

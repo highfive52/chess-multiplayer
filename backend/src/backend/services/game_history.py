@@ -10,6 +10,7 @@ from typing import Optional, Union, Dict
 
 from ..services.chess_notation import (
     board_from_authoritative,
+    board_from_fen,
     apply_move_and_fen,
     coords_to_square,
 )
@@ -57,7 +58,21 @@ def record_move(
     if not game:
         raise ValueError("game not found")
 
-    board = board_from_authoritative(authoritative_state)
+    if (
+        isinstance(authoritative_state, dict)
+        and authoritative_state.get("board") is None
+        and authoritative_state.get("fen") is None
+    ):
+        existing_moves = moves_repo.get_moves_for_game(game_id)
+        current_fen = (
+            existing_moves[-1]["fen_after"]
+            if existing_moves
+            else game.get("initial_fen")
+        )
+        board = board_from_fen(current_fen)
+    else:
+        board = board_from_authoritative(authoritative_state)
+
     san, fen_after = apply_move_and_fen(board, from_sq, to_sq, promotion)
 
     # Attempt to insert without computing ply client-side; the repository will

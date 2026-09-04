@@ -42,7 +42,7 @@ def test_db_migrations_and_simple_persistence():
     from backend.repositories import games as games_repo
     from backend.services import game_history
 
-    game_id = games_repo.create_game(None, "startpos", "live")
+    game_id = games_repo.create_game(None, "startpos", "test")
     assert game_id
 
     try:
@@ -102,7 +102,7 @@ def test_concurrent_move_inserts():
     from backend.repositories import games as games_repo
     from backend.repositories import game_moves as moves_repo
 
-    game_id = games_repo.create_game(None, "startpos", "live")
+    game_id = games_repo.create_game(None, "startpos", "test")
 
     insert_count = 10
 

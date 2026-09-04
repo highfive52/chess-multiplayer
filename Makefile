@@ -1,4 +1,16 @@
+# Makefile for managing backend and frontend development tasks, infrastructure, and migrations.
+
 SHELL := /bin/bash
+
+# Load environment variables from .env if present, otherwise fall back to .env.example
+# These files use KEY=VALUE lines and can be included by make. The `export` line
+# ensures the variables are exported to the shell for every recipe.
+ifneq (,$(wildcard .env))
+include .env
+else
+include .env.example
+endif
+export
 
 .PHONY: \
 	requirements \
@@ -15,22 +27,26 @@ SHELL := /bin/bash
 	postgres-up \
 	postgres-down \
 	postgres-logs \
-	migrate
+	migrate \
 	kill-frontend \
 	kill-backend \
 	kill-all
 
+# Output requirements for the backend
 requirements:
 	cd backend && uv export --format requirements-txt --no-emit-project --output-file requirements.txt
 
+# Install backend dependencies
 install-backend:
 	cd backend && uv sync
 
+# Install frontend dependencies
 install-frontend:
 	npm --prefix frontend ci
 
 install: install-backend install-frontend
 
+# Start the backend server
 start-backend:
 	# Load environment variables from .env if present, otherwise fall back to .env.example
 	cd backend && set -a; \
@@ -40,6 +56,7 @@ start-backend:
 	set +a; \
 	uv run uvicorn backend.main:asgi_app --app-dir src --reload --host 0.0.0.0 --port 8000
 
+# Start the frontend server
 start-frontend:
 	npm --prefix frontend run dev
 
@@ -49,6 +66,7 @@ dev:
 test:
 	cd backend && uv run pytest
 
+# Infrastructure management tasks (Docker Compose)
 infra-up:
 	docker compose up -d postgres redis
 
@@ -70,6 +88,7 @@ postgres-logs:
 migrate:
 	cd backend && uv run alembic -c alembic.ini upgrade head
 
+# Run integration tests	
 integration:
 	docker compose up -d postgres redis
 	cd backend && uv run pytest -q -k integration

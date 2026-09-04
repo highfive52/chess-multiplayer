@@ -1,0 +1,8 @@
+[Event "Promotion"]
+[SetUp "1"]
+[FEN "6k1/4P3/8/8/8/8/8/4K3 w - - 0 1"]
+[White "Alice"]
+[Black "Bob"]
+[Result "1-0"]
+
+1. e8=Q+ 1-0

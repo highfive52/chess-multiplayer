@@ -1,0 +1,7 @@
+[Event "Malformed"]
+[SetUp "1"]
+[FEN "bad-fen"]
+[White "Alice"]
+[Black "Bob"]
+
+1. e4 e5

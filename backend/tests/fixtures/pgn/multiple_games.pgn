@@ -1,0 +1,13 @@
+[Event "Game 1"]
+[White "Alice"]
+[Black "Bob"]
+[Result "1-0"]
+
+1. e4 e5 2. Nf3 Nc6 1-0
+
+[Event "Game 2"]
+[White "Carol"]
+[Black "Dan"]
+[Result "0-1"]
+
+1. d4 d5 2. c4 c6 0-1
