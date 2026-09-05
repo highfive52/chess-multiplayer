@@ -25,55 +25,37 @@ def insert_move(
         with conn.cursor() as cur:
             try:
                 if ply is None:
-                    # Retry loop to handle concurrent inserts that may produce
-                    # duplicate (game_id, ply) values due to race windows.
-                    import time
-                    import random
+                    # Lock the owning game row so concurrent inserts for the
+                    # same game serialize before computing the next ply.
+                    cur.execute(
+                        "SELECT 1 FROM games WHERE id = %s FOR UPDATE",
+                        (game_id,),
+                    )
 
-                    attempts = 5
-                    for attempt in range(attempts):
-                        try:
-                            # Compute next ply atomically within the insert using a CTE
-                            cur.execute(
-                                """
-                                WITH next_ply AS (
-                                    SELECT COALESCE(MAX(ply), 0) + 1 AS ply
-                                    FROM game_moves
-                                    WHERE game_id = %s
-                                )
-                                INSERT INTO game_moves (game_id, ply, san, fen_after, from_square, to_square, promotion)
-                                SELECT %s, next_ply.ply, %s, %s, %s, %s, %s
-                                FROM next_ply
-                                RETURNING id
-                                """,
-                                (
-                                    game_id,
-                                    game_id,
-                                    san,
-                                    fen_after,
-                                    from_square,
-                                    to_square,
-                                    promotion,
-                                ),
-                            )
-                            break
-                        except Exception as e:
-                            if errors is not None and isinstance(
-                                e, errors.UniqueViolation
-                            ):
-                                # rollback the failed statement so we can retry
-                                try:
-                                    conn.rollback()
-                                except Exception:
-                                    pass
-                                # brief randomized backoff and retry
-                                if attempt + 1 == attempts:
-                                    raise DuplicateMoveError(
-                                        "move already exists"
-                                    ) from e
-                                time.sleep(0.01 + random.random() * 0.02)
-                                continue
-                            raise
+                    # Compute next ply while holding the game lock to avoid
+                    # duplicate (game_id, ply) values under concurrency.
+                    cur.execute(
+                        """
+                        WITH next_ply AS (
+                            SELECT COALESCE(MAX(ply), 0) + 1 AS ply
+                            FROM game_moves
+                            WHERE game_id = %s
+                        )
+                        INSERT INTO game_moves (game_id, ply, san, fen_after, from_square, to_square, promotion)
+                        SELECT %s, next_ply.ply, %s, %s, %s, %s, %s
+                        FROM next_ply
+                        RETURNING id
+                        """,
+                        (
+                            game_id,
+                            game_id,
+                            san,
+                            fen_after,
+                            from_square,
+                            to_square,
+                            promotion,
+                        ),
+                    )
                 else:
                     cur.execute(
                         """

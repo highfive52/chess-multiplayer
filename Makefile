@@ -5,8 +5,8 @@ SHELL := /bin/bash
 # Load environment variables from .env if present, otherwise fall back to .env.example
 # These files use KEY=VALUE lines and can be included by make. The `export` line
 # ensures the variables are exported to the shell for every recipe.
-ifneq (,$(wildcard .env))
-include .env
+ifneq (,$(wildcard .env.local))
+include .env.local
 else
 include .env.example
 endif
@@ -48,13 +48,7 @@ install: install-backend install-frontend
 
 # Start the backend server
 start-backend:
-	# Load environment variables from .env if present, otherwise fall back to .env.example
-	cd backend && set -a; \
-	if [ -f ../.env ]; then . ../.env; \
-	elif [ -f ../.env.example ]; then . ../.env.example; \
-	fi; \
-	set +a; \
-	uv run uvicorn backend.main:asgi_app --app-dir src --reload --host 0.0.0.0 --port 8000
+	cd backend && uv run uvicorn backend.main:asgi_app --app-dir src --reload --host 0.0.0.0 --port 8000
 
 # Start the frontend server
 start-frontend:
