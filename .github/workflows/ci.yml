@@ -23,11 +23,16 @@ jobs:
           version: "latest"
           enable-cache: true
 
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          uv sync
+
       - name: Run Python Lint (Ruff)
-        run: uv run --with ruff ruff check backend/
+        run: uv run --directory backend ruff check .
 
       - name: Run Python Format Check (Ruff)
-        run: uv run --with ruff ruff format --check backend/
+        run: uv run --directory backend ruff format --check .
 
       # --- TYPESCRIPT FRONTEND CHECKS ---
       - name: Set up Node.js
@@ -43,9 +48,7 @@ jobs:
           npm ci
 
       - name: Run Frontend Format Check (Prettier)
-        run: |
-          cd frontend
-          npx prettier --check .
+        run: npm run format --prefix frontend -- --check
 
       - name: Run Frontend Lint (ESLint)
         run: npm run lint --prefix frontend
@@ -70,9 +73,7 @@ jobs:
           uv sync
 
       - name: Run Backend Tests
-        run: |
-          cd backend
-          uv run pytest
+        run: uv run --directory backend pytest
 
   test-frontend:
     name: Run Frontend Tests

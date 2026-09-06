@@ -4,22 +4,22 @@ repos:
     hooks:
       # --- PYTHON BACKEND ---
       - id: ruff-check
-        name: Ruff check
-        entry: bash -c 'cd backend && uv run ruff check .'
+        name: Ruff check & fix
+        entry: uv run --directory backend ruff check . --fix
         language: system
         pass_filenames: false
         files: ^backend/
 
       - id: ruff-format
         name: Ruff format
-        entry: bash -c 'cd backend && uv run ruff format .'
+        entry: uv run --directory backend ruff format .
         language: system
         pass_filenames: false
         files: ^backend/
 
       - id: pytest
         name: Backend tests
-        entry: bash -c 'cd backend && uv run pytest -q'
+        entry: uv run --directory backend pytest -q
         language: system
         pass_filenames: false
         files: ^backend/
