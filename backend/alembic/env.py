@@ -18,9 +18,17 @@ target_metadata = MetaData()
 # 2. Override sqlalchemy.url with DATABASE_URL if set in environment
 database_url = os.environ.get("DATABASE_URL")
 if database_url:
-    # Ensure URL starts with standard dialect prefix for SQLAlchemy
+    # Handle legacy Heroku/Render dialect prefix
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+    # Force SQLAlchemy to use 'psycopg' (v3) instead of defaulting to missing 'psycopg2'
+    if (
+        database_url.startswith("postgresql://")
+        and "+" not in database_url.split("://")[0]
+    ):
+        database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
     config.set_main_option("sqlalchemy.url", database_url)
 
 
