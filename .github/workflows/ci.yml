@@ -58,6 +58,22 @@ jobs:
     needs: lint-and-format
     runs-on: ubuntu-latest
 
+    # Service container for Postgres
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: chess_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -72,7 +88,14 @@ jobs:
           cd backend
           uv sync
 
+      - name: Run Database Migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chess_test
+        run: uv run --directory backend alembic upgrade head
+
       - name: Run Backend Tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chess_test
         run: uv run --directory backend pytest
 
   test-frontend:
