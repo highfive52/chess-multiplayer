@@ -33,11 +33,23 @@ sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 app = FastAPI()
 asgi_app = socketio.ASGIApp(sio, app)
 
-# CORS for local development (allow Vite dev server)
+# Build list of allowed origins
+origins = [
+    "https://highfive52.github.io",  # Production GitHub Pages
+    "http://localhost:5173",  # Vite dev server default
+    "http://localhost:5175",  # Alternate Vite dev server
+]
+
+# Allow overriding/adding extra origins dynamically via environment variables
+if custom_origins := os.environ.get("ALLOWED_ORIGINS"):
+    origins.extend(
+        [origin.strip() for origin in custom_origins.split(",") if origin.strip()]
+    )
+
+# Apply CORS middleware to FastAPI
 app.add_middleware(
     CORSMiddleware,
-    # Allow Vite dev server origins used in local development (5173, 5175)
-    allow_origins=["http://localhost:5173", "http://localhost:5175"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
