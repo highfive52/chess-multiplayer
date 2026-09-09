@@ -17,12 +17,20 @@ repos:
         pass_filenames: false
         files: ^backend/
 
-      - id: pytest
+      - id: pytest-backend
         name: Backend tests
         entry: uv run --directory backend pytest -q
         language: system
         pass_filenames: false
         files: ^backend/
+
+      # --- PYTHON ML ---
+      - id: pytest-ml
+        name: ML tests
+        entry: uv run --directory ml pytest -q
+        language: system
+        pass_filenames: false
+        files: ^ml/
 
       # --- TYPESCRIPT FRONTEND ---
       - id: prettier
