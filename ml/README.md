@@ -47,3 +47,23 @@ You can also run a focused subset with a test name filter:
 ```bash
 uv run pytest -k training_data
 ```
+
+## Installation - PyTorch
+
+```bash
+nvidia-smi
+```
+
+```bash
+cd ml
+uv add torch
+```
+
+```bash
+uv run python -c "import torch; print('torch:', torch.__version__); print('built CUDA:', torch.version.cuda); print('CUDA available:', torch.cuda.is_available())"
+uv run python -c "import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No GPU')"
+```
+
+```bash
+uv add torch --index https://download.pytorch.org/whl/cu130
+```

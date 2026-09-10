@@ -1,0 +1,35 @@
+{
+  "model_version": "policy-v1",
+  "architecture_version": "policy-cnn-v1",
+  "board_encoding_version": "board-v1",
+  "move_encoding_version": "move-v1",
+  "move_class_count": 20480,
+  "training_date": "2026-09-09",
+  "run_id": "policy-v1-20260909",
+
+  "training": {
+    "dataset": "Lichess/standard-chess-games",
+    "minimum_elo": 1800,
+    "game_count": 10000,
+    "training_game_count": 8000,
+    "validation_game_count": 2000,
+    "training_position_count": 609081,
+    "validation_position_count": 153604,
+    "total_position_count": 762685,
+    "validation_fraction": 0.2,
+    "seed": 42,
+    "batch_size": 256,
+    "learning_rate": 0.001,
+    "epochs_requested": 10
+  },
+
+  "checkpoint": {
+    "selection_metric": "validation_loss",
+    "best_epoch": 7,
+    "validation_loss": 2.8516,
+    "validation_top1_accuracy": 0.28614,
+    "validation_top3_accuracy": 0.50766,
+    "validation_top5_accuracy": 0.61330,
+    "validation_illegal_top1_rate": 0.07849
+  }
+}

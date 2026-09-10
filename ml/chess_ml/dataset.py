@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import io
+
 from dataclasses import dataclass
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterator, Mapping, Sequence
 
 import chess
 import chess.pgn
+import torch
+from torch.utils.data import Dataset, random_split
+
+from chess_ml.encoding import encode_board
+from chess_ml.moves import encode_move
 
 
 @dataclass(frozen=True)
@@ -72,3 +78,76 @@ def iter_training_examples(
         )
 
         board.push(move)
+
+
+class ChessPolicyDataset(Dataset):
+    """PyTorch dataset of encoded chess-policy observations."""
+
+    def __init__(
+        self,
+        examples: Sequence[TrainingExample],
+    ) -> None:
+        self.examples = list(examples)
+
+    def __len__(self) -> int:
+        """Return the number of training observations."""
+
+        return len(self.examples)
+
+    def __getitem__(
+        self,
+        index: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return one encoded board and move target."""
+
+        example = self.examples[index]
+
+        x = encode_board(example.board)
+
+        y = torch.tensor(
+            encode_move(example.move),
+            dtype=torch.long,
+        )
+
+        return x, y
+
+
+def build_training_examples(
+    game_records: Sequence[Mapping[str, Any]],
+) -> list[TrainingExample]:
+    """Expand game records into supervised training observations."""
+
+    examples: list[TrainingExample] = []
+
+    for game_record in game_records:
+        examples.extend(
+            iter_training_examples(game_record)
+        )
+
+    return examples
+
+def split_game_records(
+    game_records: Sequence[Mapping[str, Any]],
+    *,
+    validation_fraction: float = 0.2,
+    seed: int = 42,
+):
+    """Split game records into training and validation sets."""
+
+    if not 0.0 < validation_fraction < 1.0:
+        raise ValueError(
+            "validation_fraction must be between 0 and 1"
+        )
+
+    generator = torch.Generator().manual_seed(seed)
+
+    training_records, validation_records = random_split(
+        game_records,
+        [
+            1.0 - validation_fraction,
+            validation_fraction,
+        ],
+        generator=generator,
+    )
+
+    return training_records, validation_records
