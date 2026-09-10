@@ -1,37 +1,71 @@
 import json
 import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Response, HTTPException, UploadFile, File, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 import socketio
 import redis.asyncio as aioredis
-from backend.validator import (
-    is_legal_move,
-    find_king,
-    is_square_attacked,
-    causes_self_check,
-    has_legal_moves,
-)
 import random
 import string
 import asyncio
+import traceback
 
+from backend.services.game_move import (
+    execute_move,
+    final_fen,
+)
 from backend.services.game_history import create_game_record, record_move
 from backend.services import replay as replay_service
 from backend.schemas.replay import ReplayDocument
-from backend.services.chess_notation import board_from_authoritative
 from backend.repositories import games as games_repo
-import traceback
 from backend.services.pgn_import import import_pgn_text
 from backend.schemas.pgn_import import ImportResponse
+from backend.services.ml_player import MLPlayer
+
 
 # 1. Configure the Redis connection string (Defaulting to Docker localhost)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-redis = aioredis.from_url(REDIS_URL, decode_responses=True)
+redis = aioredis.from_url(
+    REDIS_URL,
+    decode_responses=True,
+)
+
 
 # 2. Setup Socket.io and FastAPI boundaries
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
-app = FastAPI()
-asgi_app = socketio.ASGIApp(sio, app)
+sio = socketio.AsyncServer(
+    async_mode="asgi",
+    cors_allowed_origins="*",
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize long-lived application services."""
+
+    print("[ML] Loading chess policy model...")
+
+    app.state.ml_player = MLPlayer()
+
+    print("[ML] Chess policy model loaded.")
+
+    yield
+
+
+app = FastAPI(
+    lifespan=lifespan,
+)
+
+socket_app = socketio.ASGIApp(
+    sio,
+)
+
+app.mount(
+    "/socket.io",
+    socket_app,
+)
+
+asgi_app = app
 
 # Build list of allowed origins
 origins = [
@@ -367,24 +401,18 @@ async def handle_propose_move(sid, data):
 
     redis_room_key = f"room:{room_code}"
 
-    # 1. FETCH Authoritative state
+    # 1. Fetch authoritative state
     raw_state = await redis.get(redis_room_key)
+
     if not raw_state:
         print(f"[ERROR] Active match state missing for Room {room_code}!")
         return
+
     game_state = json.loads(raw_state)
 
-    # 🛑 CHECKPOINT A: Block matching on completed timelines
-    if game_state.get("status") == "completed":
-        await sio.emit(
-            "move_rejected",
-            {"reason": "The game has already ended in checkmate."},
-            to=sid,
-        )
-        return
-
-    # 2. Identity & Turn Validation
+    # 2. Resolve player identity
     players = game_state["players"]
+
     player_color = (
         "white"
         if players["white"] == user_id
@@ -393,216 +421,125 @@ async def handle_propose_move(sid, data):
         else None
     )
 
-    if player_color is None or player_color != game_state["current_turn"]:
-        print(
-            f"[REJECTED] Room [{room_code}] - Move out of turn from color: {player_color}"
+    if player_color is None:
+        print(f"[REJECTED] Room [{room_code}] - User is not an active player")
+
+        await sio.emit(
+            "move_rejected",
+            {"reason": "You are not an active player"},
+            to=sid,
         )
-        await sio.emit("move_rejected", {"reason": "Not your turn"}, to=sid)
         return
 
-    opponent_color = "black" if player_color == "white" else "white"
-
-    # 3. Extract coordinates
+    # 3. Extract proposed coordinates
     move_from = data.get("from")
     move_to = data.get("to")
-    f_row, f_col = move_from["row"], move_from["col"]
-    t_row, t_col = move_to["row"], move_to["col"]
 
-    # Capture the authoritative pre-move state so notation logic can apply
-    # the move against the board as it was before mutation.
-    pre_move_auth_state = {
-        "board": json.loads(json.dumps(game_state["board"])),
-        "current_turn": game_state.get("current_turn"),
-        "castling_rights": json.loads(
-            json.dumps(game_state.get("castling_rights", {}))
-        ),
-    }
+    f_row = move_from["row"]
+    f_col = move_from["col"]
+    t_row = move_to["row"]
+    t_col = move_to["col"]
 
-    # GEOMETRIC RULES ENGINE VALIDATION
-    if not is_legal_move(
-        game_state["board"], f_row, f_col, t_row, t_col, game_state["castling_rights"]
-    ):
-        print(f"[REJECTED] Geometric Rule Violation in Room [{room_code}]")
-        await sio.emit("move_rejected", {"reason": "Illegal chess movement"}, to=sid)
-        return
-
-    # 🛑 CHECKPOINT B: Block matching on Self-Exposing King moves (Illegal check avoidance)
-    if causes_self_check(
-        game_state["board"],
+    # 4. Execute through shared authoritative move service
+    result = execute_move(
+        game_state,
         player_color,
         f_row,
         f_col,
         t_row,
         t_col,
-        game_state["castling_rights"],
-    ):
-        print(
-            f"[REJECTED] Check Rule Violation: User leaves King exposed inside Room [{room_code}]"
-        )
+    )
+
+    if not result.accepted:
+        print(f"[REJECTED] Room [{room_code}] - {result.reason}")
+
         await sio.emit(
-            "move_rejected", {"reason": "Move leaves your king in check"}, to=sid
+            "move_rejected",
+            {"reason": result.reason},
+            to=sid,
         )
         return
 
-    # 4. State Mutation (Move verified safe)
-    moving_piece = game_state["board"][f_row][f_col]
-    if moving_piece:
-        p_type = moving_piece["type"]
-        p_color = moving_piece["color"]
+    game_state = result.game_state
 
-        # King Castling Slide Check
-        if p_type == "k" and abs(t_col - f_col) == 2:
-            home_rank = 7 if p_color == "w" else 0
-            is_kingside = t_col > f_col
-
-            old_rook_col = 7 if is_kingside else 0
-            new_rook_col = 5 if is_kingside else 3
-
-            rook_piece = game_state["board"][home_rank][old_rook_col]
-            game_state["board"][home_rank][new_rook_col] = rook_piece
-            game_state["board"][home_rank][old_rook_col] = None
-
-        # Update Castling Rights
-        rights = game_state["castling_rights"][p_color]
-        if p_type == "k":
-            rights["king_has_moved"] = True
-        elif p_type == "r":
-            if f_col == 0:
-                rights["a_rook_has_moved"] = True
-            elif f_col == 7:
-                rights["h_rook_has_moved"] = True
-
-        game_state["board"][t_row][t_col] = moving_piece
-        game_state["board"][f_row][f_col] = None
-
-    # 🛑 CHECKPOINT C: Post-Move Check & Checkmate Evaluation
-    opp_king_pos = find_king(game_state["board"], opponent_color)
-    is_opp_in_check = is_square_attacked(
-        game_state["board"],
-        opp_king_pos[0],
-        opp_king_pos[1],
-        player_color,
-        game_state["castling_rights"],
+    # 5. Save authoritative state
+    await redis.set(
+        redis_room_key,
+        json.dumps(game_state),
     )
 
-    if is_opp_in_check:
-        game_state["check_status"] = opponent_color
-        print(
-            f"[CONTEXT] {opponent_color} King placed into Check inside room {room_code}"
-        )
+    # 6. Persist game completion if move ended the game
+    if game_state.get("status") == "completed" and "game_id" in game_state:
+        try:
+            final_position = final_fen(game_state)
 
-        # Test if the checked player can legally move anywhere (Checkmate)
-        if not has_legal_moves(
-            game_state["board"], opponent_color, game_state["castling_rights"]
-        ):
-            game_state["status"] = "completed"
-            game_state["winner"] = player_color
-            print(f"[CHECKMATE] Room {room_code} finished. Winner: {player_color}")
-            # Persist completion metadata if we have a durable game id
-            try:
-                if "game_id" in game_state:
-                    # compute final FEN from authoritative board
-                    auth_state = {
-                        "board": game_state["board"],
-                        "current_turn": game_state.get("current_turn"),
-                        "castling_rights": game_state.get("castling_rights"),
-                    }
-                    board = board_from_authoritative(auth_state)
-                    final_fen = board.fen()
-                    result = player_color
-                    asyncio.create_task(
-                        asyncio.to_thread(
-                            games_repo.complete_game,
-                            game_state["game_id"],
-                            result,
-                            final_fen,
-                        )
-                    )
-            except Exception as e:
-                print(
-                    f"[HISTORY WARN] failed to persist completion for Room [{room_code}]: {e}"
+            asyncio.create_task(
+                asyncio.to_thread(
+                    games_repo.complete_game,
+                    game_state["game_id"],
+                    game_state["winner"],
+                    final_position,
                 )
-    else:
-        game_state["check_status"] = None
+            )
 
-        # 🔄 FIX: Handle Stalemate Draws when player has zero moves left out of check
-        if not has_legal_moves(
-            game_state["board"], opponent_color, game_state["castling_rights"]
-        ):
-            game_state["status"] = "completed"
-            game_state["winner"] = "draw"
-            print(f"[STALEMATE] Room {room_code} finished in a draw.")
-            try:
-                if "game_id" in game_state:
-                    auth_state = {
-                        "board": game_state["board"],
-                        "current_turn": game_state.get("current_turn"),
-                        "castling_rights": game_state.get("castling_rights"),
-                    }
-                    board = board_from_authoritative(auth_state)
-                    final_fen = board.fen()
-                    result = "draw"
-                    asyncio.create_task(
-                        asyncio.to_thread(
-                            games_repo.complete_game,
-                            game_state["game_id"],
-                            result,
-                            final_fen,
-                        )
-                    )
-            except Exception as e:
-                print(
-                    f"[HISTORY WARN] failed to persist completion for Room [{room_code}]: {e}"
-                )
+        except Exception as e:
+            print(
+                f"[HISTORY WARN] failed to persist "
+                f"completion for Room [{room_code}]: {e}"
+            )
 
-    # 5. Advance Turn only if match continues active
-    if game_state["status"] == "active":
-        game_state["current_turn"] = opponent_color
-
-    # 6. SAVE Authoritative payload
-    await redis.set(redis_room_key, json.dumps(game_state))
-
-    # 6.5 Persist history asynchronously (best-effort). We derive an authoritative
-    # shape that our notation adapter understands.
+    # 7. Persist move history
     async def _persist_move_and_log(
-        game_id, auth_state, from_sq, to_sq, promotion, room_code
+        game_id,
+        auth_state,
+        from_sq,
+        to_sq,
+        promotion,
+        room_code,
     ):
         try:
             res = await asyncio.to_thread(
-                record_move, game_id, auth_state, from_sq, to_sq, promotion
+                record_move,
+                game_id,
+                auth_state,
+                from_sq,
+                to_sq,
+                promotion,
             )
+
             print(
-                f"[HISTORY] persisted move id={res.get('id')} ply={res.get('ply')} room={room_code}"
+                f"[HISTORY] persisted move "
+                f"id={res.get('id')} "
+                f"ply={res.get('ply')} "
+                f"room={room_code}"
             )
+
         except Exception as e:
             print(f"[HISTORY ERR] failed to persist move for Room [{room_code}]: {e}")
 
     try:
-        if "game_id" in game_state:
-            # Use the captured pre-move authoritative state so the notation
-            # adapter can compute SAN/FEN by applying the move against the
-            # board as it was before mutation.
-            auth_state = pre_move_auth_state
-            # run blocking DB work in a thread, and log any errors
+        if "game_id" in game_state and result.pre_move_state is not None:
             asyncio.create_task(
                 _persist_move_and_log(
                     game_state["game_id"],
-                    auth_state,
+                    result.pre_move_state,
                     (f_row, f_col),
                     (t_row, t_col),
                     None,
                     room_code,
                 )
             )
+
     except Exception as e:
         print(
             f"[HISTORY WARN] failed to schedule persistence for Room [{room_code}]: {e}"
         )
 
-    # 7. BROADCAST updated status array downstream
+    # 8. Broadcast authoritative update
     print(
         f"[SOCKET] Broadcasting match validation update to room pipe: {redis_room_key}"
     )
+
     await sio.emit(
         "move_executed",
         {
@@ -611,7 +548,10 @@ async def handle_propose_move(sid, data):
             "status": game_state["status"],
             "winner": game_state["winner"],
             "check_status": game_state["check_status"],
-            "last_move": {"from": move_from, "to": move_to},
+            "last_move": {
+                "from": move_from,
+                "to": move_to,
+            },
         },
         to=redis_room_key,
     )

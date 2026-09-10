@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "chess-ml",
     "fastapi>=0.136.3",
     "psycopg[binary]>=3.3.5",
     "python-chess>=1.999",
@@ -17,6 +18,9 @@ dependencies = [
     "redis>=8.0.0",
     "uvicorn>=0.48.0",
 ]
+
+[tool.uv.sources]
+chess-ml = { path = "../ml", editable = true }
 
 [project.scripts]
 backend = "backend.main:main"

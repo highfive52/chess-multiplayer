@@ -16,10 +16,13 @@ export
 	requirements \
 	install-backend \
 	install-frontend \
+	install-ml \
 	install \
 	start-backend \
 	start-frontend \
 	dev \
+	test-backend \
+	test-ml \
 	test \
 	infra-up \
 	infra-down \
@@ -28,6 +31,8 @@ export
 	postgres-down \
 	postgres-logs \
 	migrate \
+	integration \
+	integration-docker \
 	kill-frontend \
 	kill-backend \
 	kill-all
@@ -36,6 +41,7 @@ export
 requirements:
 	cd backend && uv export --format requirements-txt --no-emit-project --output-file requirements.txt
 
+#-----------------------------
 # Install backend dependencies
 install-backend:
 	cd backend && uv sync
@@ -44,8 +50,22 @@ install-backend:
 install-frontend:
 	npm --prefix frontend ci
 
-install: install-backend install-frontend
+install-ml:
+	cd ml && uv sync
 
+install: install-backend install-frontend install-ml
+
+#------------------------------
+# Test tasks for backend and ML components
+test-backend:
+	cd backend && uv run pytest
+
+test-ml:
+	cd ml && uv run pytest
+
+test: test-backend test-ml
+
+#-----------------------------
 # Start the backend server
 start-backend:
 	cd backend && uv run uvicorn backend.main:asgi_app --app-dir src --reload --host 0.0.0.0 --port 8000
@@ -57,9 +77,8 @@ start-frontend:
 dev:
 	honcho start -f Procfile.dev
 
-test:
-	cd backend && uv run pytest
 
+#------------------------------
 # Infrastructure management tasks (Docker Compose)
 infra-up:
 	docker compose up -d postgres redis
@@ -82,6 +101,7 @@ postgres-logs:
 migrate:
 	cd backend && uv run alembic -c alembic.ini upgrade head
 
+#------------------------------
 # Run integration tests	
 integration:
 	docker compose up -d postgres redis
