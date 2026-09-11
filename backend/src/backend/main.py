@@ -16,6 +16,7 @@ from backend.services.game_move import (
     final_fen,
 )
 from backend.services.game_history import create_game_record, record_move
+from backend.services.bot_move import generate_bot_move
 from backend.services import replay as replay_service
 from backend.schemas.replay import ReplayDocument
 from backend.repositories import games as games_repo
@@ -133,6 +134,10 @@ def create_initial_state():
             "white": None,
             "black": None,
         },  # Dynamic seating inside the DB payload
+        "bot": {
+            "enabled": False,
+            "color": None,
+        },
         "current_turn": "white",
         "board": create_initial_board(),
         "castling_rights": {
@@ -151,6 +156,118 @@ def create_initial_state():
         "winner": None,  # None | "white" | "black" | "draw"
         "check_status": None,  # None | "white" | "black"
     }
+
+
+def _bot_color(game_state):
+    bot = game_state.get("bot", {})
+    if not bot.get("enabled"):
+        return None
+    return bot.get("color")
+
+
+def _bot_seat_reserved(game_state, color: str) -> bool:
+    return _bot_color(game_state) == color and game_state["players"].get(color) is None
+
+
+async def _persist_move_update(
+    room_code,
+    redis_room_key,
+    game_state,
+    result,
+    move_from,
+    move_to,
+):
+    def _as_coords(square):
+        if isinstance(square, dict):
+            return (square.get("row"), square.get("col"))
+        return square
+
+    await redis.set(redis_room_key, json.dumps(game_state))
+
+    if game_state.get("status") == "completed" and "game_id" in game_state:
+        try:
+            final_position = final_fen(game_state)
+
+            asyncio.create_task(
+                asyncio.to_thread(
+                    games_repo.complete_game,
+                    game_state["game_id"],
+                    game_state["winner"],
+                    final_position,
+                )
+            )
+
+        except Exception as e:
+            print(
+                f"[HISTORY WARN] failed to persist "
+                f"completion for Room [{room_code}]: {e}"
+            )
+
+    async def _persist_move_and_log(
+        game_id,
+        auth_state,
+        from_sq,
+        to_sq,
+        promotion,
+        room_code,
+    ):
+        try:
+            res = await asyncio.to_thread(
+                record_move,
+                game_id,
+                auth_state,
+                from_sq,
+                to_sq,
+                promotion,
+            )
+
+            print(
+                f"[HISTORY] persisted move "
+                f"id={res.get('id')} "
+                f"ply={res.get('ply')} "
+                f"room={room_code}"
+            )
+
+        except Exception as e:
+            print(f"[HISTORY ERR] failed to persist move for Room [{room_code}]: {e}")
+
+    try:
+        if "game_id" in game_state and result.pre_move_state is not None:
+            asyncio.create_task(
+                _persist_move_and_log(
+                    game_state["game_id"],
+                    result.pre_move_state,
+                    _as_coords(move_from),
+                    _as_coords(move_to),
+                    None,
+                    room_code,
+                )
+            )
+
+    except Exception as e:
+        print(
+            f"[HISTORY WARN] failed to schedule persistence for Room [{room_code}]: {e}"
+        )
+
+    print(
+        f"[SOCKET] Broadcasting match validation update to room pipe: {redis_room_key}"
+    )
+
+    await sio.emit(
+        "move_executed",
+        {
+            "board": game_state["board"],
+            "current_turn": game_state["current_turn"],
+            "status": game_state["status"],
+            "winner": game_state["winner"],
+            "check_status": game_state["check_status"],
+            "last_move": {
+                "from": move_from,
+                "to": move_to,
+            },
+        },
+        to=redis_room_key,
+    )
 
 
 # --- API HTTP LAYER ---
@@ -296,7 +413,7 @@ async def handle_join_room(sid, data):
         players["white"] = user_id
         role = "white"
         print(f"[SLOT CLAIM] User [{user_id}] claimed White in Room [{room_code}].")
-    elif players["black"] is None:
+    elif players["black"] is None and not _bot_seat_reserved(game_state, "black"):
         players["black"] = user_id
         role = "black"
         print(f"[SLOT CLAIM] User [{user_id}] claimed Black in Room [{room_code}].")
@@ -369,6 +486,65 @@ async def handle_create_room(sid, data=None):
     await sio.enter_room(sid, redis_room_key)
 
     print(f"[ROOM CREATED] User [{user_id}] created Room [{room_code}].")
+
+    await sio.emit(
+        "assigned_role",
+        {
+            "room_id": room_code,
+            "color": "white",
+            "board": game_state["board"],
+            "current_turn": game_state["current_turn"],
+            "status": game_state.get("status", "active"),
+            "winner": game_state.get("winner", None),
+            "check_status": game_state.get("check_status", None),
+        },
+        to=sid,
+    )
+
+
+@sio.on("create_bot_room")
+async def handle_create_bot_room(sid, data=None):
+    session = await sio.get_session(sid)
+    user_id = session.get("user_id") if session else None
+    if not user_id:
+        print(
+            f"[CREATE REJECT] SID [{sid}] missing user identity during bot room creation."
+        )
+        return
+
+    def gen_code():
+        return "".join(random.choice(string.ascii_uppercase) for _ in range(4))
+
+    room_code = gen_code()
+    attempt = 0
+    while attempt < 10:
+        redis_key = f"room:{room_code}"
+        existing = await redis.get(redis_key)
+        if not existing:
+            break
+        room_code = gen_code()
+        attempt += 1
+
+    redis_room_key = f"room:{room_code}"
+    game_state = create_initial_state()
+    game_state["players"]["white"] = user_id
+    game_state["bot"] = {"enabled": True, "color": "black"}
+
+    try:
+        game_id = await asyncio.to_thread(
+            create_game_record, room_code, "startpos", "bot"
+        )
+        game_state["game_id"] = game_id
+    except Exception as e:
+        print(
+            f"[WARN] Could not create durable game record for Bot Room [{room_code}]: {e}"
+        )
+
+    await redis.set(redis_room_key, json.dumps(game_state))
+    await sio.save_session(sid, {"user_id": user_id, "room_id": room_code})
+    await sio.enter_room(sid, redis_room_key)
+
+    print(f"[BOT ROOM CREATED] User [{user_id}] created Bot Room [{room_code}].")
 
     await sio.emit(
         "assigned_role",
@@ -462,99 +638,83 @@ async def handle_propose_move(sid, data):
 
     game_state = result.game_state
 
-    # 5. Save authoritative state
-    await redis.set(
+    await _persist_move_update(
+        room_code,
         redis_room_key,
-        json.dumps(game_state),
+        game_state,
+        result,
+        move_from,
+        move_to,
     )
 
-    # 6. Persist game completion if move ended the game
-    if game_state.get("status") == "completed" and "game_id" in game_state:
-        try:
-            final_position = final_fen(game_state)
-
-            asyncio.create_task(
-                asyncio.to_thread(
-                    games_repo.complete_game,
-                    game_state["game_id"],
-                    game_state["winner"],
-                    final_position,
-                )
-            )
-
-        except Exception as e:
-            print(
-                f"[HISTORY WARN] failed to persist "
-                f"completion for Room [{room_code}]: {e}"
-            )
-
-    # 7. Persist move history
-    async def _persist_move_and_log(
-        game_id,
-        auth_state,
-        from_sq,
-        to_sq,
-        promotion,
-        room_code,
+    bot_color = _bot_color(game_state)
+    has_ml_player = hasattr(app.state, "ml_player")
+    print(
+        f"[BOT] Room [{room_code}] preflight status={game_state.get('status')} "
+        f"current_turn={game_state.get('current_turn')} bot_color={bot_color} "
+        f"ml_player_ready={has_ml_player}"
+    )
+    if (
+        game_state.get("status") == "active"
+        and bot_color is not None
+        and game_state.get("current_turn") == bot_color
+        and has_ml_player
     ):
+        print(f"[BOT] Room [{room_code}] turn={bot_color} generating move")
         try:
-            res = await asyncio.to_thread(
-                record_move,
-                game_id,
-                auth_state,
-                from_sq,
-                to_sq,
-                promotion,
-            )
-
+            bot_move = generate_bot_move(game_state, app.state.ml_player)
             print(
-                f"[HISTORY] persisted move "
-                f"id={res.get('id')} "
-                f"ply={res.get('ply')} "
-                f"room={room_code}"
+                f"[BOT] Room [{room_code}] predicted from=({bot_move.from_row},{bot_move.from_col}) "
+                f"to=({bot_move.to_row},{bot_move.to_col}) promotion={bot_move.promotion}"
             )
-
         except Exception as e:
-            print(f"[HISTORY ERR] failed to persist move for Room [{room_code}]: {e}")
+            print(f"[BOT WARN] failed to generate move for Room [{room_code}]: {e}")
+            return
 
-    try:
-        if "game_id" in game_state and result.pre_move_state is not None:
-            asyncio.create_task(
-                _persist_move_and_log(
-                    game_state["game_id"],
-                    result.pre_move_state,
-                    (f_row, f_col),
-                    (t_row, t_col),
-                    None,
-                    room_code,
-                )
-            )
-
-    except Exception as e:
-        print(
-            f"[HISTORY WARN] failed to schedule persistence for Room [{room_code}]: {e}"
+        bot_result = execute_move(
+            game_state,
+            bot_color,
+            bot_move.from_row,
+            bot_move.from_col,
+            bot_move.to_row,
+            bot_move.to_col,
         )
 
-    # 8. Broadcast authoritative update
-    print(
-        f"[SOCKET] Broadcasting match validation update to room pipe: {redis_room_key}"
-    )
+        if not bot_result.accepted:
+            print(f"[BOT REJECTED] Room [{room_code}] reason={bot_result.reason}")
 
-    await sio.emit(
-        "move_executed",
-        {
-            "board": game_state["board"],
-            "current_turn": game_state["current_turn"],
-            "status": game_state["status"],
-            "winner": game_state["winner"],
-            "check_status": game_state["check_status"],
-            "last_move": {
-                "from": move_from,
-                "to": move_to,
-            },
-        },
-        to=redis_room_key,
-    )
+            await sio.emit(
+                "bot_move_rejected",
+                {
+                    "room_id": room_code,
+                    "reason": bot_result.reason,
+                    "from": {
+                        "row": bot_move.from_row,
+                        "col": bot_move.from_col,
+                    },
+                    "to": {
+                        "row": bot_move.to_row,
+                        "col": bot_move.to_col,
+                    },
+                },
+                to=redis_room_key,
+            )
+            return
+
+        print(
+            f"[BOT ACCEPTED] Room [{room_code}] from=({bot_move.from_row},{bot_move.from_col}) "
+            f"to=({bot_move.to_row},{bot_move.to_col})"
+        )
+
+        game_state = bot_result.game_state
+        await _persist_move_update(
+            room_code,
+            redis_room_key,
+            game_state,
+            bot_result,
+            {"row": bot_move.from_row, "col": bot_move.from_col},
+            {"row": bot_move.to_row, "col": bot_move.to_col},
+        )
 
 
 @sio.event

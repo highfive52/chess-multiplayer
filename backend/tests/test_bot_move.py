@@ -37,6 +37,9 @@ def test_square_to_coords():
 
 def test_generate_bot_move_from_initial_state():
     game_state = create_initial_state()
+
+    assert game_state["bot"] == {"enabled": False, "color": None}
+
     ml_player = FakeMLPlayer()
 
     move = generate_bot_move(

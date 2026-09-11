@@ -71,6 +71,7 @@ const btnRetry = document.getElementById("btn-retry") as HTMLButtonElement | nul
 const btnCopyLink = document.getElementById("btn-copy-link") as HTMLButtonElement | null;
 const connStatus = document.getElementById("conn-status") as HTMLElement | null;
 const btnCreateEl = () => document.getElementById("btn-create") as HTMLButtonElement | null;
+const btnBotCreateEl = () => document.getElementById("btn-bot-create") as HTMLButtonElement | null;
 const btnJoinEl = () => document.getElementById("btn-join") as HTMLButtonElement | null;
 
 // Toast utilities
@@ -120,6 +121,7 @@ function updateOpenReplayVisibility(inGame: boolean) {
 document.addEventListener("DOMContentLoaded", () => {
   // Grab Lobby Action Buttons safely on ready state
   const btnCreate = document.getElementById("btn-create") as HTMLButtonElement;
+  const btnBotCreate = document.getElementById("btn-bot-create") as HTMLButtonElement;
   const btnJoin = document.getElementById("btn-join") as HTMLButtonElement;
   const btnOpenReplayLobby = document.getElementById("btn-open-replay-lobby");
   const inputRoomCode = document.getElementById("input-room-code") as HTMLInputElement;
@@ -171,6 +173,25 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       socket.emit("create_room");
+    });
+  }
+
+  if (btnBotCreate) {
+    btnBotCreate.addEventListener("click", () => {
+      if (isReplayMode) {
+        showToast("Exit replay mode before creating a game");
+        return;
+      }
+      if (!socket.connected) {
+        alert("Not connected to backend. Trying to reconnect...");
+        try {
+          socket.connect();
+        } catch (e) {
+          console.debug(e);
+        }
+        return;
+      }
+      socket.emit("create_bot_room");
     });
   }
 
@@ -548,6 +569,8 @@ socket.on("connect", () => {
   }
   const createBtn = btnCreateEl();
   if (createBtn) createBtn.disabled = false;
+  const botCreateBtn = btnBotCreateEl();
+  if (botCreateBtn) botCreateBtn.disabled = false;
   const joinBtn = btnJoinEl();
   if (joinBtn) joinBtn.disabled = false;
   showToast("Connected");
@@ -562,6 +585,8 @@ socket.on("disconnect", (reason) => {
   }
   const createBtn = btnCreateEl();
   if (createBtn) createBtn.disabled = true;
+  const botCreateBtn = btnBotCreateEl();
+  if (botCreateBtn) botCreateBtn.disabled = true;
   const joinBtn = btnJoinEl();
   if (joinBtn) joinBtn.disabled = true;
   console.log("Socket disconnected:", reason);
@@ -639,6 +664,15 @@ socket.on("move_rejected", (payload) => {
   } else {
     renderBoard(board, selectedSquare, myRole);
   }
+});
+
+socket.on("bot_move_rejected", (payload) => {
+  console.warn(
+    `[bot_move_rejected] room=${payload.room_id} reason=${payload.reason} from=${fmtCoord(
+      payload.from.row,
+      payload.from.col
+    )} to=${fmtCoord(payload.to.row, payload.to.col)}`
+  );
 });
 
 socket.on("move_executed", (payload) => {
