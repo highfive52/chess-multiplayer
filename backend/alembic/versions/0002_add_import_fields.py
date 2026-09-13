@@ -5,8 +5,8 @@ Revises: 0001_create_game_history
 Create Date: 2026-09-04
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "0002_add_import_fields"

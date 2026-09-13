@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from chess_ml.artifacts import (
     ModelArtifactMetadata,
     load_model_metadata,
@@ -15,15 +14,9 @@ from chess_ml.artifacts import (
 
 
 def test_policy_v1_metadata_is_compatible() -> None:
-    metadata_path = (
-        Path(__file__).parents[1]
-        / "artifacts"
-        / "policy_v1.json"
-    )
+    metadata_path = Path(__file__).parents[1] / "artifacts" / "policy_v1.json"
 
-    metadata = load_model_metadata(
-        metadata_path
-    )
+    metadata = load_model_metadata(metadata_path)
 
     validate_model_metadata(metadata)
 
@@ -49,10 +42,7 @@ def test_incompatible_metadata_is_rejected() -> None:
 def test_missing_required_metadata_is_rejected(
     tmp_path: Path,
 ) -> None:
-    metadata_path = (
-        tmp_path
-        / "metadata.json"
-    )
+    metadata_path = tmp_path / "metadata.json"
 
     metadata_path.write_text(
         json.dumps(

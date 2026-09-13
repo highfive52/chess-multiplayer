@@ -6,20 +6,23 @@ by parsing one or more games from the provided PGN text. Parsing uses
 `ImportedMove` shape.
 """
 
-from typing import List, TextIO
 import io
+from contextlib import suppress
+from datetime import datetime, timezone
+from typing import TextIO
 
 import chess
 import chess.pgn
+from backend.schemas.pgn_import import ImportedMove, ParsedPgnGame
 
-from backend.schemas.pgn_import import ParsedPgnGame, ImportedMove
 from ..database.connection import connect
-from datetime import datetime, timezone
 
 try:
     import psycopg
+    from psycopg import Error as PsycopgError
     from psycopg import errors as pg_errors
-except Exception:  # pragma: no cover - psycopg may be installed in test env
+except ImportError:  # pragma: no cover - psycopg may be installed in test env
+    PsycopgError = RuntimeError
     psycopg = None
     pg_errors = None
 
@@ -40,7 +43,7 @@ def normalize_game(game: chess.pgn.Game) -> ParsedPgnGame:
     board = chess.Board(fen=initial_fen) if initial_fen else chess.Board()
 
     # Detect warnings: comments, NAGs, variations, unknown tags
-    warnings: List[str] = []
+    warnings: list[str] = []
     has_comment = False
     has_nag = False
     has_variation = False
@@ -57,7 +60,7 @@ def normalize_game(game: chess.pgn.Game) -> ParsedPgnGame:
         "FEN",
         "SetUp",
     }
-    unknown_tags = [k for k in headers.keys() if k not in known_tags]
+    unknown_tags = [k for k in headers if k not in known_tags]
     if unknown_tags:
         warnings.append("UNKNOWN_TAGS_IGNORED")
 
@@ -65,24 +68,20 @@ def normalize_game(game: chess.pgn.Game) -> ParsedPgnGame:
     stack = [game]
     while stack:
         node = stack.pop()
-        try:
-            if getattr(node, "comment", None):
-                has_comment = True
-            nags = getattr(node, "nags", None)
-            if nags:
-                # python-chess represents NAGs as a set of ints
-                if len(nags) > 0:
-                    has_nag = True
-            vars_ = getattr(node, "variations", None)
-            if vars_:
-                # If any node has more than one variation branch, record it
-                if len(vars_) > 1:
-                    has_variation = True
-                for child in vars_:
-                    stack.append(child)
-        except Exception:
-            # Be forgiving for unexpected node shapes
-            continue
+        if getattr(node, "comment", None):
+            has_comment = True
+
+        nags = getattr(node, "nags", None)
+        if nags:
+            # python-chess represents NAGs as a set of ints
+            has_nag = True
+
+        vars_ = getattr(node, "variations", None)
+        if vars_:
+            # If any node has more than one variation branch, record it
+            if len(vars_) > 1:
+                has_variation = True
+            stack.extend(list(vars_))
 
     if has_comment:
         warnings.append("COMMENTS_IGNORED")
@@ -91,7 +90,7 @@ def normalize_game(game: chess.pgn.Game) -> ParsedPgnGame:
     if has_variation:
         warnings.append("VARIATIONS_IGNORED")
 
-    moves: List[ImportedMove] = []
+    moves: list[ImportedMove] = []
     ply = 1
 
     try:
@@ -133,7 +132,7 @@ def normalize_game(game: chess.pgn.Game) -> ParsedPgnGame:
                 )
             )
             ply += 1
-    except Exception as exc:  # pragma: no cover - surface parse issues
+    except (ValueError, AssertionError, IndexError, TypeError) as exc:
         raise ValueError(f"Error normalizing game: {exc}") from exc
 
     return ParsedPgnGame(
@@ -141,14 +140,14 @@ def normalize_game(game: chess.pgn.Game) -> ParsedPgnGame:
     )
 
 
-def parse_pgn(text: str) -> List[ParsedPgnGame]:
+def parse_pgn(text: str) -> list[ParsedPgnGame]:
     """Parse PGN text and return a list of `ParsedPgnGame`.
 
     Reads multiple games from the provided text until EOF. Each game is
     normalized and returned. Parsing errors raise `ValueError` with context.
     """
     pgn: TextIO = io.StringIO(text)
-    parsed_games: List[ParsedPgnGame] = []
+    parsed_games: list[ParsedPgnGame] = []
     game_index = 0
     # File-level heuristics: if the raw PGN contains parentheses, it likely
     # includes inline variations. python-chess may ignore malformed
@@ -166,7 +165,12 @@ def parse_pgn(text: str) -> List[ParsedPgnGame]:
             if has_parentheses and "VARIATIONS_IGNORED" not in parsed.warnings:
                 parsed.warnings.append("VARIATIONS_IGNORED")
             parsed_games.append(parsed)
-        except Exception as exc:  # pragma: no cover - bubbled to caller
+        except (
+            ValueError,
+            AssertionError,
+            IndexError,
+            TypeError,
+        ) as exc:  # pragma: no cover - bubbled to caller
             raise ValueError(
                 f"Failed to parse game at index {game_index}: {exc}"
             ) from exc
@@ -234,7 +238,7 @@ def persist_parsed_game(
                                 m.promotion,
                             ),
                         )
-                    except Exception as e:
+                    except PsycopgError as e:
                         # Map well-known DB errors to structured diagnostics
                         code = "IMPORT_ERROR"
                         if pg_errors is not None and isinstance(
@@ -244,10 +248,8 @@ def persist_parsed_game(
                         elif isinstance(e, ValueError):
                             code = "INVALID_MOVE"
                         # Rollback the whole game transaction
-                        try:
+                        with suppress(Exception):
                             conn.rollback()
-                        except Exception:
-                            pass
                         raise RuntimeError(
                             {
                                 "code": code,
@@ -258,12 +260,10 @@ def persist_parsed_game(
 
                 conn.commit()
                 return game_id
-            except Exception:
+            except PsycopgError:
                 # Ensure rollback if anything unexpected happened
-                try:
+                with suppress(Exception):
                     conn.rollback()
-                except Exception:
-                    pass
                 raise
     finally:
         conn.close()
@@ -301,7 +301,7 @@ def import_pgn_text(text: str, source_filename: str | None = None) -> dict:
                 failed.append(
                     {"game_index": idx, "code": "IMPORT_ERROR", "message": str(re)}
                 )
-        except Exception as exc:
+        except (ValueError, AssertionError, IndexError, TypeError) as exc:
             # Generic fallback
             failed.append(
                 {"game_index": idx, "code": "IMPORT_ERROR", "message": str(exc)}

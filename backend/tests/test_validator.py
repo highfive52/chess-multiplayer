@@ -1,11 +1,11 @@
 import copy
 
+from backend.main import create_initial_board
 from backend.validator import (
-    is_legal_move,
     causes_self_check,
     has_legal_moves,
+    is_legal_move,
 )
-from backend.main import create_initial_board
 
 
 def test_knight_move_from_start_is_valid():

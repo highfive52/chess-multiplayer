@@ -1,29 +1,28 @@
+import asyncio
 import json
 import os
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, Response, HTTPException, UploadFile, File, Body, Request
-from fastapi.middleware.cors import CORSMiddleware
-import socketio
-import redis.asyncio as aioredis
 import random
 import string
-import asyncio
 import traceback
+from contextlib import asynccontextmanager
 
+import redis.asyncio as aioredis
+import socketio
+from fastapi import Body, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+
+from backend.repositories import games as games_repo
+from backend.schemas.pgn_import import ImportResponse
+from backend.schemas.replay import ReplayDocument
+from backend.services import replay as replay_service
+from backend.services.bot_move import generate_bot_move
+from backend.services.game_history import create_game_record, record_move
 from backend.services.game_move import (
     execute_move,
     final_fen,
 )
-from backend.services.game_history import create_game_record, record_move
-from backend.services.bot_move import generate_bot_move
-from backend.services import replay as replay_service
-from backend.schemas.replay import ReplayDocument
-from backend.repositories import games as games_repo
-from backend.services.pgn_import import import_pgn_text
-from backend.schemas.pgn_import import ImportResponse
 from backend.services.ml_player import MLPlayer
-
+from backend.services.pgn_import import import_pgn_text
 
 # 1. Configure the Redis connection string (Defaulting to Docker localhost)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -89,6 +88,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+IMPORT_PGN_FILE = File(None)
+IMPORT_PGN_TEXT = Body(None)
 
 
 def create_initial_board():
@@ -197,7 +199,7 @@ async def _persist_move_update(
                 )
             )
 
-        except Exception as e:
+        except (RuntimeError, ValueError, TypeError, KeyError, OSError) as e:
             print(
                 f"[HISTORY WARN] failed to persist "
                 f"completion for Room [{room_code}]: {e}"
@@ -228,7 +230,7 @@ async def _persist_move_update(
                 f"room={room_code}"
             )
 
-        except Exception as e:
+        except (RuntimeError, ValueError, TypeError, KeyError, OSError) as e:
             print(f"[HISTORY ERR] failed to persist move for Room [{room_code}]: {e}")
 
     try:
@@ -244,7 +246,7 @@ async def _persist_move_update(
                 )
             )
 
-    except Exception as e:
+    except RuntimeError as e:
         print(
             f"[HISTORY WARN] failed to schedule persistence for Room [{room_code}]: {e}"
         )
@@ -300,7 +302,7 @@ async def list_games(source_type: str | None = None, limit: int = 50):
     try:
         docs = await asyncio.to_thread(games_repo.list_games, source_type, limit)
         return docs
-    except Exception as e:
+    except (RuntimeError, ValueError, OSError) as e:
         # Log a full traceback to the server console for debugging
         tb = traceback.format_exc()
         print("[ERROR] list_games failure:\n", tb)
@@ -311,8 +313,8 @@ async def list_games(source_type: str | None = None, limit: int = 50):
 @app.post("/games/import/pgn", response_model=ImportResponse)
 async def import_pgn(
     request: Request,
-    file: UploadFile | None = File(None),
-    text: str | None = Body(None),
+    file: UploadFile | None = IMPORT_PGN_FILE,
+    text: str | None = IMPORT_PGN_TEXT,
 ):
     """Import PGN via file upload or raw text.
 
@@ -338,7 +340,7 @@ async def import_pgn(
                 text = payload.get("text")
             elif isinstance(payload, str):
                 text = payload
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError):
             raw = await request.body()
             text = raw.decode("utf-8", errors="replace").strip() or None
 
@@ -347,7 +349,7 @@ async def import_pgn(
 
     try:
         result = await asyncio.to_thread(import_pgn_text, text, source_filename)
-    except Exception as e:
+    except (RuntimeError, ValueError, TypeError, KeyError, OSError) as e:
         tb = traceback.format_exc()
         print("[ERROR] import_pgn failure:\n", tb)
         raise HTTPException(status_code=500, detail=f"import failed: {e}")
@@ -476,7 +478,7 @@ async def handle_create_room(sid, data=None):
             create_game_record, room_code, "startpos", "live"
         )
         game_state["game_id"] = game_id
-    except Exception as e:
+    except (RuntimeError, ValueError, TypeError, KeyError, OSError) as e:
         print(
             f"[WARN] Could not create durable game record for Room [{room_code}]: {e}"
         )
@@ -535,7 +537,7 @@ async def handle_create_bot_room(sid, data=None):
             create_game_record, room_code, "startpos", "bot"
         )
         game_state["game_id"] = game_id
-    except Exception as e:
+    except (RuntimeError, ValueError, TypeError, KeyError, OSError) as e:
         print(
             f"[WARN] Could not create durable game record for Bot Room [{room_code}]: {e}"
         )
@@ -667,7 +669,7 @@ async def handle_propose_move(sid, data):
                 f"[BOT] Room [{room_code}] predicted from=({bot_move.from_row},{bot_move.from_col}) "
                 f"to=({bot_move.to_row},{bot_move.to_col}) promotion={bot_move.promotion}"
             )
-        except Exception as e:
+        except (RuntimeError, ValueError, TypeError, KeyError, OSError) as e:
             print(f"[BOT WARN] failed to generate move for Room [{room_code}]: {e}")
             return
 

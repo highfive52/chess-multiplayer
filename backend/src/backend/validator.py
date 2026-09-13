@@ -60,8 +60,7 @@ def is_legal_move(board, f_row, f_col, t_row, t_col, castling_rights=None) -> bo
                 return True
 
         # Standard diagonal capture
-        if abs(col_diff) == 1 and row_diff == direction and target:
-            return True
+        return abs(col_diff) == 1 and row_diff == direction and bool(target)
 
         return False
 
@@ -188,17 +187,19 @@ def is_square_attacked(
     target_row: int,
     target_col: int,
     attacker_color: str,
-    castling_rights: dict = None,
+    castling_rights: dict | None = None,
 ) -> bool:
     """Scans whether any active piece of attacker_color can legally hit the targeted coordinate."""
     attacker_char = "w" if attacker_color == "white" else "b"
     for r in range(8):
         for c in range(8):
             piece = board[r][c]
-            if piece and piece.get("color") == attacker_char:
-                # Reuse geometric engine lookup to verify line of sight
-                if is_legal_move(board, r, c, target_row, target_col, castling_rights):
-                    return True
+            if (
+                piece
+                and piece.get("color") == attacker_char
+                and is_legal_move(board, r, c, target_row, target_col, castling_rights)
+            ):
+                return True
     return False
 
 
@@ -209,7 +210,7 @@ def causes_self_check(
     fc: int,
     tr: int,
     tc: int,
-    castling_rights: dict = None,
+    castling_rights: dict | None = None,
 ) -> bool:
     """Runs a dry-run array transformation on a deep copy to evaluate king vulnerabilities."""
     simulated_board = copy.deepcopy(board)
@@ -229,7 +230,11 @@ def causes_self_check(
     )
 
 
-def has_legal_moves(board, player_color: str, castling_rights: dict = None) -> bool:
+def has_legal_moves(
+    board,
+    player_color: str,
+    castling_rights: dict | None = None,
+) -> bool:
     """Scans all player pieces for any geometric line that drops self-check vulnerability."""
     my_char_color = "w" if player_color == "white" else "b"
     for r in range(8):
@@ -238,9 +243,10 @@ def has_legal_moves(board, player_color: str, castling_rights: dict = None) -> b
             if piece and piece.get("color") == my_char_color:
                 for tr in range(8):
                     for tc in range(8):
-                        if is_legal_move(board, r, c, tr, tc, castling_rights):
-                            if not causes_self_check(
-                                board, player_color, r, c, tr, tc, castling_rights
-                            ):
-                                return True  # At least one validation vector clears check escape pathing
+                        if is_legal_move(
+                            board, r, c, tr, tc, castling_rights
+                        ) and not causes_self_check(
+                            board, player_color, r, c, tr, tc, castling_rights
+                        ):
+                            return True
     return False

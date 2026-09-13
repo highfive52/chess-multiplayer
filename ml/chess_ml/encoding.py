@@ -5,7 +5,6 @@ from __future__ import annotations
 import chess
 import torch
 
-
 PIECE_CHANNELS = {
     (chess.WHITE, chess.PAWN): 0,
     (chess.WHITE, chess.KNIGHT): 1,
@@ -65,9 +64,7 @@ def encode_board(board: chess.Board) -> torch.Tensor:
     #     tensor[0, 1, 4] = 1.0
 
     for square, piece in board.piece_map().items():
-        channel = PIECE_CHANNELS[
-            (piece.color, piece.piece_type)
-        ]
+        channel = PIECE_CHANNELS[(piece.color, piece.piece_type)]
 
         # Determine the rank (row) and file (column) of the square.
         rank = chess.square_rank(square)
@@ -85,7 +82,7 @@ def encode_board(board: chess.Board) -> torch.Tensor:
     # rank 3    0 0 0 0 0 0 0 0
     # rank 2    1 1 1 1 1 1 1 1
     # rank 1    0 0 0 0 0 0 0 0
-    #           a b c d e f g h    
+    #           a b c d e f g h
 
     if board.turn == chess.WHITE:
         tensor[12].fill_(1.0)

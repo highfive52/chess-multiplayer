@@ -1,17 +1,17 @@
-from .games import create_game, get_game, complete_game
 from .game_moves import (
-    insert_move,
-    get_moves_for_game,
-    get_move_by_id,
     DuplicateMoveError,
+    get_move_by_id,
+    get_moves_for_game,
+    insert_move,
 )
+from .games import complete_game, create_game, get_game
 
 __all__ = [
+    "DuplicateMoveError",
+    "complete_game",
     "create_game",
     "get_game",
-    "complete_game",
-    "insert_move",
-    "get_moves_for_game",
     "get_move_by_id",
-    "DuplicateMoveError",
+    "get_moves_for_game",
+    "insert_move",
 ]

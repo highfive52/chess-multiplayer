@@ -1,6 +1,6 @@
 import os
-import pytest
 
+import pytest
 from backend.database.connection import connect, get_database_url
 
 
@@ -12,7 +12,7 @@ def _is_db_available():
         conn = connect()
         conn.close()
         return True
-    except Exception:
+    except (RuntimeError, OSError, ValueError):
         return False
 
 
@@ -22,8 +22,8 @@ def test_replay_endpoint_integration():
         pytest.skip("DATABASE_URL not set or DB not reachable; skip integration tests")
 
     # apply migrations
-    from alembic.config import Config
     from alembic import command
+    from alembic.config import Config
 
     here = os.path.dirname(os.path.dirname(__file__))
     alembic_ini = os.path.join(here, "alembic.ini")
@@ -33,8 +33,9 @@ def test_replay_endpoint_integration():
 
     from backend.repositories import games as games_repo
     from backend.services import game_history
-    from backend import main as main_module
     from fastapi.testclient import TestClient
+
+    from backend import main as main_module
 
     game_id = games_repo.create_game(None, "startpos", "test")
 

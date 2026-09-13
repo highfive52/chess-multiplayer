@@ -6,27 +6,25 @@ Functions:
 - `complete_game(game_id, result, final_fen)` -> marks game completed.
 """
 
-from typing import Optional, Union, Dict
-
+from ..repositories import game_moves as moves_repo
+from ..repositories import games as games_repo
+from ..repositories.game_moves import DuplicateMoveError
 from ..services.chess_notation import (
+    apply_move_and_fen,
     board_from_authoritative,
     board_from_fen,
-    apply_move_and_fen,
     coords_to_square,
 )
-from ..repositories import games as games_repo
-from ..repositories import game_moves as moves_repo
-from ..repositories.game_moves import DuplicateMoveError
 
 
-def _to_algebraic(sq: Union[str, tuple]) -> str:
+def _to_algebraic(sq: str | tuple) -> str:
     if isinstance(sq, str):
         return sq
     return coords_to_square(sq)
 
 
 def create_game_record(
-    room_code: Optional[str], initial_fen: Optional[str], source_type: str = "live"
+    room_code: str | None, initial_fen: str | None, source_type: str = "live"
 ) -> str:
     """Create a game record and return its id."""
     # Normalize the 'startpos' token to a full FEN string so downstream
@@ -39,11 +37,11 @@ def create_game_record(
 
 def record_move(
     game_id: str,
-    authoritative_state: Union[str, dict, None],
-    from_sq: Union[str, tuple],
-    to_sq: Union[str, tuple],
-    promotion: Optional[str] = None,
-) -> Dict:
+    authoritative_state: str | dict | None,
+    from_sq: str | tuple,
+    to_sq: str | tuple,
+    promotion: str | None = None,
+) -> dict:
     """Record a single move for `game_id`.
 
     - Builds a `chess.Board` from `authoritative_state` (FEN or dict with 'fen').
@@ -118,7 +116,5 @@ def record_move(
         raise
 
 
-def complete_game(
-    game_id: str, result: Optional[str], final_fen: Optional[str]
-) -> None:
+def complete_game(game_id: str, result: str | None, final_fen: str | None) -> None:
     games_repo.complete_game(game_id, result, final_fen)

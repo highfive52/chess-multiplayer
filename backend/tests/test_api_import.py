@@ -1,9 +1,10 @@
 import os
-from fastapi.testclient import TestClient
+from pathlib import Path
 
-from backend.main import app
 from backend.database.connection import connect
+from backend.main import app
 from backend.repositories.games import get_game
+from fastapi.testclient import TestClient
 
 
 def mark_game_as_test(game_id: str) -> None:
@@ -21,16 +22,15 @@ def mark_game_as_test(game_id: str) -> None:
 
 def ensure_database_env():
     # If DATABASE_URL not set, try to read from repo .env.example
-    if "DATABASE_URL" not in os.environ:
-        here = os.path.join(os.path.dirname(__file__), "..", "..")
-        env_path = os.path.join(here, ".env.example")
+    if not os.environ.get("DATABASE_URL"):
+        env_path = Path(__file__).resolve().parents[2] / ".env.example"
         try:
-            with open(env_path, "r") as f:
+            with env_path.open("r", encoding="utf-8") as f:
                 for line in f:
                     if line.startswith("DATABASE_URL="):
                         os.environ["DATABASE_URL"] = line.strip().split("=", 1)[1]
                         break
-        except Exception:
+        except OSError:
             pass
 
 

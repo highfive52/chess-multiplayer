@@ -1,6 +1,6 @@
 import os
-import pytest
 
+import pytest
 from backend.database.connection import connect, get_database_url
 
 
@@ -12,7 +12,7 @@ def _is_db_available():
         conn = connect()
         conn.close()
         return True
-    except Exception:
+    except (RuntimeError, OSError, ValueError):
         return False
 
 
@@ -28,8 +28,8 @@ def test_db_migrations_and_simple_persistence():
         pytest.skip("DATABASE_URL not set or DB not reachable; skip integration tests")
 
     # Apply Alembic migrations programmatically using the alembic config in repo
-    from alembic.config import Config
     from alembic import command
+    from alembic.config import Config
 
     here = os.path.dirname(os.path.dirname(__file__))
     alembic_ini = os.path.join(here, "alembic.ini")
@@ -90,8 +90,8 @@ def test_concurrent_move_inserts():
         pytest.skip("DATABASE_URL not set or DB not reachable; skip integration tests")
 
     # ensure migrations applied
-    from alembic.config import Config
     from alembic import command
+    from alembic.config import Config
 
     here = os.path.dirname(os.path.dirname(__file__))
     alembic_ini = os.path.join(here, "alembic.ini")
@@ -99,8 +99,8 @@ def test_concurrent_move_inserts():
     cfg = Config(alembic_ini)
     command.upgrade(cfg, "head")
 
-    from backend.repositories import games as games_repo
     from backend.repositories import game_moves as moves_repo
+    from backend.repositories import games as games_repo
 
     game_id = games_repo.create_game(None, "startpos", "test")
 

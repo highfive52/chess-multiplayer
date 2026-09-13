@@ -1,9 +1,8 @@
-from typing import Optional, Dict
 from ..database.connection import connect
 
 
 def create_game(
-    room_code: Optional[str], initial_fen: str, source_type: str = "live"
+    room_code: str | None, initial_fen: str, source_type: str = "live"
 ) -> str:
     conn = connect()
     try:
@@ -23,7 +22,7 @@ def create_game(
         conn.close()
 
 
-def get_game(game_id: str) -> Optional[Dict]:
+def get_game(game_id: str) -> dict | None:
     conn = connect()
     try:
         with conn.cursor() as cur:
@@ -39,8 +38,8 @@ def get_game(game_id: str) -> Optional[Dict]:
 
 def complete_game(
     game_id: str,
-    result: Optional[str],
-    final_fen: Optional[str],
+    result: str | None,
+    final_fen: str | None,
     status: str = "completed",
 ) -> None:
     conn = connect()
@@ -63,7 +62,7 @@ def complete_game(
         conn.close()
 
 
-def list_games(source_type: Optional[str] = None, limit: int = 50):
+def list_games(source_type: str | None = None, limit: int = 50):
     conn = connect()
     try:
         with conn.cursor() as cur:

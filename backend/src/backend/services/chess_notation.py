@@ -12,14 +12,12 @@ Design notes:
   strings (e.g. 'e2') or numeric `(row,col)` tuples.
 """
 
-from typing import Tuple, Optional, Union
-
 import chess
 
-SquareInput = Union[str, Tuple[int, int]]
+SquareInput = str | tuple[int, int]
 
 
-def board_from_fen(fen: Optional[str]) -> chess.Board:
+def board_from_fen(fen: str | None) -> chess.Board:
     """Return a `chess.Board` for the given FEN.
 
     If `fen` is None or the special value 'startpos', returns the standard
@@ -30,7 +28,7 @@ def board_from_fen(fen: Optional[str]) -> chess.Board:
     return chess.Board(fen=fen)
 
 
-def coords_to_square(coord: Tuple[int, int]) -> str:
+def coords_to_square(coord: tuple[int, int]) -> str:
     """Convert (row, col) -> algebraic square string.
 
     Assumes row 0 maps to rank 8 and row 7 maps to rank 1.
@@ -49,9 +47,7 @@ def _to_algebraic(sq: SquareInput) -> str:
     return coords_to_square(sq)
 
 
-def _make_uci(
-    from_sq: SquareInput, to_sq: SquareInput, promotion: Optional[str]
-) -> str:
+def _make_uci(from_sq: SquareInput, to_sq: SquareInput, promotion: str | None) -> str:
     f = _to_algebraic(from_sq)
     t = _to_algebraic(to_sq)
     uci = f + t
@@ -65,7 +61,7 @@ def move_to_san(
     board: chess.Board,
     from_sq: SquareInput,
     to_sq: SquareInput,
-    promotion: Optional[str] = None,
+    promotion: str | None = None,
 ) -> str:
     """Return the SAN for the given move on `board`.
 
@@ -82,8 +78,8 @@ def apply_move_and_fen(
     board: chess.Board,
     from_sq: SquareInput,
     to_sq: SquareInput,
-    promotion: Optional[str] = None,
-) -> Tuple[str, str]:
+    promotion: str | None = None,
+) -> tuple[str, str]:
     """Apply the move to `board` and return (san, fen_after).
 
     The provided `board` is mutated (consistent with python-chess push semantics).
@@ -97,7 +93,7 @@ def apply_move_and_fen(
     return san, board.fen()
 
 
-def board_from_authoritative(state: Union[str, dict]) -> chess.Board:
+def board_from_authoritative(state: str | dict) -> chess.Board:
     """Create a `chess.Board` from an authoritative state.
 
     Supported inputs:
@@ -128,8 +124,8 @@ def board_from_authoritative(state: Union[str, dict]) -> chess.Board:
 
 def board_from_app_board(
     board_array,
-    current_turn: Optional[str] = None,
-    castling_rights: Optional[dict] = None,
+    current_turn: str | None = None,
+    castling_rights: dict | None = None,
 ) -> chess.Board:
     """Convert the application's nested board array into a `chess.Board`.
 
@@ -140,10 +136,10 @@ def board_from_app_board(
     """
     # Build piece placement FEN
     ranks = []
-    for row in range(0, 8):
+    for row in range(8):
         empty = 0
         parts = []
-        for col in range(0, 8):
+        for col in range(8):
             sq = board_array[row][col]
             if not sq:
                 empty += 1

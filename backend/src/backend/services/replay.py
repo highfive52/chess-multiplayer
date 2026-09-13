@@ -1,10 +1,8 @@
-from typing import Dict
-
-from ..repositories import games as games_repo
 from ..repositories import game_moves as moves_repo
+from ..repositories import games as games_repo
 
 
-def get_replay_document(game_id: str) -> Dict:
+def get_replay_document(game_id: str) -> dict:
     """Assemble a replay document for `game_id`.
 
     Raises ValueError if game not found.

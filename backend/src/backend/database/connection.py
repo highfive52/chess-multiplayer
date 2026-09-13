@@ -1,10 +1,9 @@
 import os
-from typing import Optional
 
 DATABASE_URL_ENV = "DATABASE_URL"
 
 
-def get_database_url() -> Optional[str]:
+def get_database_url() -> str | None:
     return os.environ.get(DATABASE_URL_ENV)
 
 
@@ -20,7 +19,7 @@ def connect():
 
     try:
         import psycopg
-    except Exception as e:
+    except ImportError as e:
         raise RuntimeError("psycopg is required to connect to the database") from e
 
     # Allow SQLAlchemy-style scheme override such as:

@@ -2,9 +2,7 @@ from pathlib import Path
 
 import chess
 import pytest
-
 from backend.services.pgn_import import parse_pgn
-
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pgn"
 

@@ -38,13 +38,9 @@ def _top_k_correct(
         dim=1,
     ).indices
 
-    matches = top_k_predictions.eq(
-        targets.unsqueeze(1)
-    )
+    matches = top_k_predictions.eq(targets.unsqueeze(1))
 
-    return int(
-        matches.any(dim=1).sum().item()
-    )
+    return int(matches.any(dim=1).sum().item())
 
 
 def _count_illegal_top1_predictions(
@@ -105,9 +101,7 @@ def train_one_epoch(
 
         batch_size = y.shape[0]
 
-        total_loss += (
-            loss.item() * batch_size
-        )
+        total_loss += loss.item() * batch_size
         total_examples += batch_size
 
         top1_correct += _top_k_correct(
@@ -173,9 +167,7 @@ def evaluate(
 
             batch_size = y.shape[0]
 
-            total_loss += (
-                loss.item() * batch_size
-            )
+            total_loss += loss.item() * batch_size
             total_examples += batch_size
 
             top1_correct += _top_k_correct(
@@ -197,20 +189,14 @@ def evaluate(
             )
 
             batch_examples = dataset.examples[
-                example_offset:
-                example_offset + batch_size
+                example_offset : example_offset + batch_size
             ]
 
-            boards = [
-                example.board
-                for example in batch_examples
-            ]
+            boards = [example.board for example in batch_examples]
 
-            illegal_top1_count += (
-                _count_illegal_top1_predictions(
-                    logits,
-                    boards,
-                )
+            illegal_top1_count += _count_illegal_top1_predictions(
+                logits,
+                boards,
             )
 
             example_offset += batch_size
@@ -220,8 +206,5 @@ def evaluate(
         top1_accuracy=top1_correct / total_examples,
         top3_accuracy=top3_correct / total_examples,
         top5_accuracy=top5_correct / total_examples,
-        illegal_top1_rate=(
-            illegal_top1_count
-            / total_examples
-        ),
+        illegal_top1_rate=(illegal_top1_count / total_examples),
     )

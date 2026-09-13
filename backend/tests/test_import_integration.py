@@ -1,7 +1,7 @@
-from backend.services.pgn_import import import_pgn_text
 from backend.database.connection import connect
-from backend.repositories.games import get_game
 from backend.repositories.game_moves import get_moves_for_game
+from backend.repositories.games import get_game
+from backend.services.pgn_import import import_pgn_text
 
 
 def mark_game_as_test(game_id: str) -> None:

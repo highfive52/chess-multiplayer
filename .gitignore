@@ -28,6 +28,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+ml/chess_ml.egg-info/
 
 # ==========================================
 # 4. ENVIRONMENT / SECRETS (Crucial Safety)

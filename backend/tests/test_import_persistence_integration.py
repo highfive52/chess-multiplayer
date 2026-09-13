@@ -1,13 +1,11 @@
 from pathlib import Path
 
 import pytest
-
 from backend.database.connection import connect, get_database_url
 from backend.repositories.game_moves import get_moves_for_game
 from backend.repositories.games import get_game
 from backend.schemas.pgn_import import ImportedMove, ParsedPgnGame
 from backend.services.pgn_import import import_pgn_text, persist_parsed_game
-
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pgn"
 
@@ -23,7 +21,7 @@ def _is_db_available() -> bool:
         conn = connect()
         conn.close()
         return True
-    except Exception:
+    except (RuntimeError, OSError, ValueError):
         return False
 
 

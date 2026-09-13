@@ -7,54 +7,55 @@ from torch import nn
 
 from chess_ml.moves import MOVE_CLASS_COUNT
 
-    # 1. Human/domain representation
-    #
-    # chess.Board
-    # "White knight is on g1"
-    # "White can castle kingside"
-    # "Black to move"
-    #         ↓
-    #
-    # 2. Machine input representation
-    #
-    # 18 × 8 × 8
-    # hand-designed features
-    #         ↓
-    #
-    # 3. Learned representation
-    #
-    # spatial feature maps
-    #
-    # 32 × 8 × 8
-    #       ↓
-    # 64 × 8 × 8
-    #       ↓
-    # 64 × 8 × 8
-    #       ↓
-    # flatten
-    #       ↓
-    # 4096 features
-    #       ↓
-    # dense representation
-    #
-    # 256 features
-    #
-    # 4. Prediction representation
-    #
-    # 20,480 logits
-    #       ↓
-    # move class
-    #       ↓
-    # chess.Move
-    #
-    
-    #------
+# 1. Human/domain representation
+#
+# chess.Board
+# "White knight is on g1"
+# "White can castle kingside"
+# "Black to move"
+#         ↓
+#
+# 2. Machine input representation
+#
+# 18 × 8 × 8
+# hand-designed features
+#         ↓
+#
+# 3. Learned representation
+#
+# spatial feature maps
+#
+# 32 × 8 × 8
+#       ↓
+# 64 × 8 × 8
+#       ↓
+# 64 × 8 × 8
+#       ↓
+# flatten
+#       ↓
+# 4096 features
+#       ↓
+# dense representation
+#
+# 256 features
+#
+# 4. Prediction representation
+#
+# 20,480 logits
+#       ↓
+# move class
+#       ↓
+# chess.Move
+#
 
-    #              width
-    #               ↑
-    # 18 → 32 → 64 → 64
-    #       └───────────
-    #           depth →
+# ------
+
+#              width
+#               ↑
+# 18 → 32 → 64 → 64
+#       └───────────
+#           depth →
+
 
 class PolicyCNN(nn.Module):
     """Small convolutional network for chess move classification."""
@@ -111,6 +112,7 @@ class PolicyCNN(nn.Module):
         x = self.classifier(x)
 
         return x
+
 
 # input
 # [N, 18, 8, 8]

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import List, Optional
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
@@ -11,9 +10,9 @@ class ReplayMove(BaseModel):
     ply: int
     san: str
     fen_after: str
-    from_square: Optional[str]
-    to_square: Optional[str]
-    promotion: Optional[str] = None
+    from_square: str | None
+    to_square: str | None
+    promotion: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -21,16 +20,16 @@ class ReplayMove(BaseModel):
 
 class ReplayDocument(BaseModel):
     game_id: UUID
-    room_code: Optional[str] = None
-    source_type: Optional[str] = None
-    initial_fen: Optional[str] = None
-    final_fen: Optional[str] = None
-    status: Optional[str] = None
-    result: Optional[str] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    room_code: str | None = None
+    source_type: str | None = None
+    initial_fen: str | None = None
+    final_fen: str | None = None
+    status: str | None = None
+    result: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
-    moves: List[ReplayMove] = []
+    moves: list[ReplayMove] = []
 
     model_config = ConfigDict(from_attributes=True)

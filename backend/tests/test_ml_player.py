@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import chess
+from pathlib import Path
 
+import chess
 from backend.services.ml_player import (
     MLPlayer,
     MoveProposal,
@@ -15,11 +16,13 @@ def test_ml_player_returns_move_proposal(
 ) -> None:
     monkeypatch.setenv(
         "ML_MODEL_PATH",
-        "../ml/artifacts/policy_v1.pt",
+        str(Path(__file__).resolve().parents[2] / "ml" / "artifacts" / "policy_v1.pt"),
     )
     monkeypatch.setenv(
         "ML_MODEL_METADATA_PATH",
-        "../ml/artifacts/policy_v1.json",
+        str(
+            Path(__file__).resolve().parents[2] / "ml" / "artifacts" / "policy_v1.json"
+        ),
     )
 
     player = MLPlayer()

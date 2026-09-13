@@ -1,6 +1,6 @@
 from backend.services.chess_notation import (
-    board_from_fen,
     apply_move_and_fen,
+    board_from_fen,
     coords_to_square,
 )
 

@@ -1,0 +1,21 @@
+[tool.uv.workspace]
+members = [
+    "backend",
+    "ml",
+]
+
+[dependency-groups]
+local-inference = [
+    "numpy>=2.0",
+    "torch>=2.14.0",
+]
+
+training = [
+    "datasets>=5.0.1",
+    "ipykernel>=7.3.0",
+    "ipywidgets>=8.1.9",
+    "matplotlib>=3.11.1",
+    "pandas>=3.0.5",
+    "pyarrow>=25.0.1",
+    "torch>=2.14.0",
+]

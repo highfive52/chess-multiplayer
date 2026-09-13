@@ -1,7 +1,7 @@
+from backend.services import replay as replay_service
 from fastapi.testclient import TestClient
 
-from backend.services import replay as replay_service
-import backend.main as main
+from backend import main
 
 
 def test_get_replay_service_and_route(monkeypatch):

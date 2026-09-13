@@ -2,9 +2,7 @@
 
 SHELL := /bin/bash
 
-# Load environment variables from .env if present, otherwise fall back to .env.example
-# These files use KEY=VALUE lines and can be included by make. The `export` line
-# ensures the variables are exported to the shell for every recipe.
+# Load environment variables from .env.local if present, otherwise fall back to .env.example
 ifneq (,$(wildcard .env.local))
 include .env.local
 else
@@ -14,9 +12,8 @@ export
 
 .PHONY: \
 	requirements \
-	install-backend \
+	install-python \
 	install-frontend \
-	install-ml \
 	install \
 	start-backend \
 	start-frontend \
@@ -37,49 +34,46 @@ export
 	kill-backend \
 	kill-all
 
-# Output requirements for the backend
-requirements:
-	cd backend && uv export --format requirements-txt --no-emit-project --output-file requirements.txt
-
 #-----------------------------
-# Install backend dependencies
-install-backend:
-	cd backend && uv sync
+# Dependency management
 
-# Install frontend dependencies
+requirements:
+	uv export --package backend --format requirements-txt --no-emit-project --output-file backend/requirements.txt
+
+install-python:
+	uv sync --group local-inference
+
 install-frontend:
 	npm --prefix frontend ci
 
-install-ml:
-	cd ml && uv sync
+install: install-python install-frontend
 
-install: install-backend install-frontend install-ml
+#-----------------------------
+# Tests
 
-#------------------------------
-# Test tasks for backend and ML components
 test-backend:
-	cd backend && uv run pytest
+	uv run --group local-inference pytest backend/tests
 
 test-ml:
-	cd ml && uv run pytest
+	uv run --group local-inference pytest ml/tests
 
 test: test-backend test-ml
 
 #-----------------------------
-# Start the backend server
-start-backend:
-	cd backend && uv run uvicorn backend.main:asgi_app --app-dir src --reload --host 0.0.0.0 --port 8000
+# Development servers
 
-# Start the frontend server
+start-backend:
+	uv run --group local-inference uvicorn backend.main:asgi_app --app-dir backend/src --reload --host 0.0.0.0 --port 8000
+
 start-frontend:
 	npm --prefix frontend run dev
 
 dev:
 	honcho start -f Procfile.dev
 
+#-----------------------------
+# Infrastructure management
 
-#------------------------------
-# Infrastructure management tasks (Docker Compose)
 infra-up:
 	docker compose up -d postgres redis
 
@@ -99,19 +93,22 @@ postgres-logs:
 	docker compose logs -f postgres
 
 migrate:
-	cd backend && uv run alembic -c alembic.ini upgrade head
+	uv run --package backend alembic -c backend/alembic.ini upgrade head
 
-#------------------------------
-# Run integration tests	
+#-----------------------------
+# Integration tests
+
 integration:
 	docker compose up -d postgres redis
-	cd backend && uv run pytest -q -k integration
+	uv run --group local-inference pytest -q backend/tests -k integration
 
 integration-docker:
 	docker compose up -d postgres redis
 	docker run --rm -v $(PWD)/backend:/app -w /app python:3.11-slim bash -c "pip install --no-cache-dir \"psycopg[binary]\" alembic python-chess pytest && pytest -q tests/test_integration_db.py"
 
-# Kill processes listening on dev ports (useful if Ctrl-Z left them open)
+#-----------------------------
+# Kill development processes
+
 kill-frontend:
 	@echo "Checking for frontend process on port 5173..."
 	@PIDS="$$(lsof -ti :5173 || true)"; \
@@ -129,11 +126,9 @@ kill-backend:
 		echo "No backend process found on port 8000"; \
 	else \
 		echo "Found backend PIDs: $$PIDS"; \
-		# Show process details for visibility
 		for p in $$PIDS; do ps -fp $$p || true; done; \
 		echo "Attempting graceful kill..."; \
 		kill $$PIDS 2>/dev/null || true; \
-		# wait up to 5s for processes to exit
 		for i in 1 2 3 4 5; do \
 			sleep 1; \
 			STILL="$$(lsof -ti :8000 || true)"; \

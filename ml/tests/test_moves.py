@@ -2,7 +2,6 @@
 
 import chess
 import pytest
-
 from chess_ml.moves import (
     BASE_MOVE_COUNT,
     MOVE_CLASS_COUNT,
@@ -16,10 +15,7 @@ def test_encode_ordinary_move():
 
     move_id = encode_move(move)
 
-    expected = (
-        chess.G1 * 64
-        + chess.F3
-    )
+    expected = chess.G1 * 64 + chess.F3
 
     assert move_id == expected
 

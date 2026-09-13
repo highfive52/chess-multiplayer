@@ -1,16 +1,10 @@
-"""Standalone inference for the chess policy model."""
+"""Shared inference contracts for chess move prediction."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-
-import chess
-import torch
-
-from chess_ml.encoding import encode_board
-from chess_ml.model import PolicyCNN
-from chess_ml.moves import decode_move
+from typing import Protocol
 
 
 @dataclass(frozen=True)
@@ -24,116 +18,61 @@ class MovePrediction:
     model_version: str
 
 
-def predict_move(
-    fen: str,
-    *,
-    model: PolicyCNN,
-    device: torch.device,
-    model_version: str,
-) -> MovePrediction:
-    """Predict one move from a FEN position."""
-
-    board = chess.Board(fen)
-
-    x = encode_board(board)
-
-    x = (
-        x
-        .unsqueeze(0)
-        .to(device)
-    )
-
-    model.eval()
-
-    with torch.no_grad():
-        logits = model(x)
-
-        probabilities = torch.softmax(
-            logits,
-            dim=1,
-        )
-
-    predicted_id = int(
-        logits.argmax(dim=1).item()
-    )
-
-    predicted_move = decode_move(
-        predicted_id
-    )
-
-    score = float(
-        probabilities[
-            0,
-            predicted_id,
-        ].item()
-    )
-
-    return MovePrediction(
-        from_square=chess.square_name(
-            predicted_move.from_square
-        ),
-        to_square=chess.square_name(
-            predicted_move.to_square
-        ),
-        promotion=(
-            chess.piece_name(
-                predicted_move.promotion
-            )
-            if predicted_move.promotion is not None
-            else None
-        ),
-        score=score,
-        model_version=model_version,
-    )
-
-
-class PolicyPredictor:
-    """Load and reuse a trained chess policy model for inference."""
-
-    def __init__(
-        self,
-        model_path: str | Path,
-        *,
-        model_version: str,
-        device: torch.device | None = None,
-    ) -> None:
-        self.model_path = Path(model_path)
-        self.model_version = model_version
-
-        self.device = (
-            device
-            if device is not None
-            else torch.device(
-                "cuda"
-                if torch.cuda.is_available()
-                else "cpu"
-            )
-        )
-
-        self.model = PolicyCNN().to(
-            self.device
-        )
-
-        state_dict = torch.load(
-            self.model_path,
-            map_location=self.device,
-        )
-
-        self.model.load_state_dict(
-            state_dict
-        )
-
-        self.model.eval()
+class MovePredictor(Protocol):
+    """Interface implemented by chess move predictors."""
 
     def predict(
         self,
         fen: str,
     ) -> MovePrediction:
         """Predict one move from a FEN position."""
+        ...
 
-        return predict_move(
-            fen,
-            model=self.model,
-            device=self.device,
-            model_version=self.model_version,
+
+def create_predictor(
+    provider: str,
+    *,
+    model_path: str | Path | None = None,
+    model_version: str | None = None,
+    hf_inference_endpoint: str | None = None,
+    hf_token: str | None = None,
+) -> MovePredictor:
+    """Create the configured chess move predictor."""
+
+    if provider == "local":
+        if model_path is None:
+            raise ValueError("model_path is required for local inference")
+
+        if model_version is None:
+            raise ValueError("model_version is required for local inference")
+
+        from chess_ml.local_inference import LocalPolicyPredictor
+
+        return LocalPolicyPredictor(
+            model_path,
+            model_version=model_version,
         )
+
+    elif provider == "huggingface":
+        if not hf_inference_endpoint:
+            raise ValueError(
+                "hf_inference_endpoint is required for Hugging Face inference"
+            )
+
+        from chess_ml.hf_inference import HuggingFacePolicyPredictor
+
+        return HuggingFacePolicyPredictor(
+            hf_inference_endpoint,
+            token=hf_token,
+        )
+
+    else:
+        raise ValueError(f"Unsupported inference provider: {provider}")
+
+
+def __getattr__(name: str):
+    if name == "PolicyPredictor":
+        from chess_ml.local_inference import LocalPolicyPredictor
+
+        return LocalPolicyPredictor
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

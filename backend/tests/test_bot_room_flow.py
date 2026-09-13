@@ -3,11 +3,11 @@ import copy
 import json
 
 import pytest
-
-import backend.main as main
 from backend.main import create_initial_state
 from backend.services.bot_move import BotMove
 from backend.services.game_move import MoveResult
+
+from backend import main
 
 
 class FakeRedis:

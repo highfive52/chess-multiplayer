@@ -1,9 +1,12 @@
-from typing import Optional, List, Dict
+from contextlib import suppress
+
 from ..database.connection import connect
 
 try:
+    from psycopg import Error as PsycopgError
     from psycopg import errors
-except Exception:
+except ImportError:
+    PsycopgError = RuntimeError
     errors = None
 
 
@@ -16,9 +19,9 @@ def insert_move(
     ply: int,
     san: str,
     fen_after: str,
-    from_square: Optional[str] = None,
-    to_square: Optional[str] = None,
-    promotion: Optional[str] = None,
+    from_square: str | None = None,
+    to_square: str | None = None,
+    promotion: str | None = None,
 ) -> str:
     conn = connect()
     try:
@@ -73,12 +76,10 @@ def insert_move(
                             promotion,
                         ),
                     )
-            except Exception as e:
+            except PsycopgError as e:
                 if errors is not None and isinstance(e, errors.UniqueViolation):
-                    try:
+                    with suppress(Exception):
                         conn.rollback()
-                    except Exception:
-                        pass
                     raise DuplicateMoveError("move already exists") from e
                 raise
             move_id = cur.fetchone()[0]
@@ -88,7 +89,7 @@ def insert_move(
         conn.close()
 
 
-def get_moves_for_game(game_id: str) -> List[Dict]:
+def get_moves_for_game(game_id: str) -> list[dict]:
     conn = connect()
     try:
         with conn.cursor() as cur:
@@ -103,7 +104,7 @@ def get_moves_for_game(game_id: str) -> List[Dict]:
         conn.close()
 
 
-def get_move_by_id(move_id: str) -> Optional[Dict]:
+def get_move_by_id(move_id: str) -> dict | None:
     conn = connect()
     try:
         with conn.cursor() as cur:

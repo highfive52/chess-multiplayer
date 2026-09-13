@@ -2,10 +2,9 @@
 
 import pytest
 import torch
-from torch import nn
-
 from chess_ml.model import PolicyCNN
 from chess_ml.moves import MOVE_CLASS_COUNT
+from torch import nn
 
 
 def test_policy_cnn_accepts_single_board_batch():
@@ -117,8 +116,7 @@ def test_policy_cnn_backward_produces_gradients():
     parameters_with_gradients = [
         parameter
         for parameter in model.parameters()
-        if parameter.requires_grad
-        and parameter.grad is not None
+        if parameter.requires_grad and parameter.grad is not None
     ]
 
     assert parameters_with_gradients

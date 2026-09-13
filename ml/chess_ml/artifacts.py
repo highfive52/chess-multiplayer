@@ -8,7 +8,6 @@ from pathlib import Path
 
 from chess_ml.moves import MOVE_CLASS_COUNT
 
-
 EXPECTED_MODEL_VERSION = "policy-v1"
 EXPECTED_ARCHITECTURE_VERSION = "policy-cnn-v1"
 EXPECTED_BOARD_ENCODING_VERSION = "board-v1"
@@ -81,14 +80,11 @@ def validate_model_metadata(
 
     if mismatches:
         details = ", ".join(
-            f"{key}: expected {expected_value!r}, "
-            f"got {actual_value!r}"
+            f"{key}: expected {expected_value!r}, got {actual_value!r}"
             for key, (
                 expected_value,
                 actual_value,
             ) in mismatches.items()
         )
 
-        raise RuntimeError(
-            f"Incompatible model artifact metadata: {details}"
-        )
+        raise RuntimeError(f"Incompatible model artifact metadata: {details}")

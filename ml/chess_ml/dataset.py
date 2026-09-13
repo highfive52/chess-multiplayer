@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import io
-
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any
 
 import chess
 import chess.pgn
@@ -52,14 +52,11 @@ def iter_training_examples(
     source_game_id = str(game_record.get("Site", ""))
 
     if game is None:
-        raise ValueError(
-            f"Unable to parse PGN game: {source_game_id}"
-        )
+        raise ValueError(f"Unable to parse PGN game: {source_game_id}")
 
     if game.errors:
         raise ValueError(
-            f"PGN contains parsing errors for {source_game_id}: "
-            f"{game.errors}"
+            f"PGN contains parsing errors for {source_game_id}: {game.errors}"
         )
 
     board = game.board()
@@ -120,11 +117,10 @@ def build_training_examples(
     examples: list[TrainingExample] = []
 
     for game_record in game_records:
-        examples.extend(
-            iter_training_examples(game_record)
-        )
+        examples.extend(iter_training_examples(game_record))
 
     return examples
+
 
 def split_game_records(
     game_records: Sequence[Mapping[str, Any]],
@@ -135,9 +131,7 @@ def split_game_records(
     """Split game records into training and validation sets."""
 
     if not 0.0 < validation_fraction < 1.0:
-        raise ValueError(
-            "validation_fraction must be between 0 and 1"
-        )
+        raise ValueError("validation_fraction must be between 0 and 1")
 
     generator = torch.Generator().manual_seed(seed)
 

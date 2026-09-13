@@ -41,8 +41,7 @@ PROMOTION_TO_INDEX = {
 }
 
 INDEX_TO_PROMOTION = {
-    index: promotion
-    for promotion, index in PROMOTION_TO_INDEX.items()
+    index: promotion for promotion, index in PROMOTION_TO_INDEX.items()
 }
 
 MOVE_CLASS_COUNT = len(PROMOTION_TO_INDEX) * BASE_MOVE_COUNT
@@ -54,19 +53,11 @@ def encode_move(move: chess.Move) -> int:
     promotion_index = PROMOTION_TO_INDEX.get(move.promotion)
 
     if promotion_index is None:
-        raise ValueError(
-            f"Unsupported promotion piece: {move.promotion}"
-        )
+        raise ValueError(f"Unsupported promotion piece: {move.promotion}")
 
-    base_move_id = (
-        move.from_square * SQUARE_COUNT
-        + move.to_square
-    )
+    base_move_id = move.from_square * SQUARE_COUNT + move.to_square
 
-    return (
-        promotion_index * BASE_MOVE_COUNT
-        + base_move_id
-    )
+    return promotion_index * BASE_MOVE_COUNT + base_move_id
 
 
 def decode_move(move_id: int) -> chess.Move:
@@ -74,8 +65,7 @@ def decode_move(move_id: int) -> chess.Move:
 
     if not 0 <= move_id < MOVE_CLASS_COUNT:
         raise ValueError(
-            f"Move ID must be between 0 and "
-            f"{MOVE_CLASS_COUNT - 1}: {move_id}"
+            f"Move ID must be between 0 and {MOVE_CLASS_COUNT - 1}: {move_id}"
         )
 
     promotion_index, base_move_id = divmod(
@@ -88,9 +78,7 @@ def decode_move(move_id: int) -> chess.Move:
         SQUARE_COUNT,
     )
 
-    promotion = INDEX_TO_PROMOTION[
-        promotion_index
-    ]
+    promotion = INDEX_TO_PROMOTION[promotion_index]
 
     return chess.Move(
         from_square=from_square,

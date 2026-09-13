@@ -1,7 +1,8 @@
-from fastapi.testclient import TestClient
+from pathlib import Path
 
 from backend.main import app
 from backend.services.ml_player import MLPlayer
+from fastapi.testclient import TestClient
 
 
 def test_app_lifespan_initializes_ml_player(
@@ -9,12 +10,14 @@ def test_app_lifespan_initializes_ml_player(
 ):
     monkeypatch.setenv(
         "ML_MODEL_PATH",
-        "../ml/artifacts/policy_v1.pt",
+        str(Path(__file__).resolve().parents[2] / "ml" / "artifacts" / "policy_v1.pt"),
     )
 
     monkeypatch.setenv(
         "ML_MODEL_METADATA_PATH",
-        "../ml/artifacts/policy_v1.json",
+        str(
+            Path(__file__).resolve().parents[2] / "ml" / "artifacts" / "policy_v1.json"
+        ),
     )
 
     with TestClient(app):
