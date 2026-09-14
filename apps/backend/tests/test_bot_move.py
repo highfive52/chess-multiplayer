@@ -1,11 +1,11 @@
 import chess
-from chess_ml.inference import MovePrediction
 from main import create_initial_state
 from services.bot_move import (
     BotMove,
     generate_bot_move,
     square_to_coords,
 )
+from services.inference import MovePrediction
 
 
 class FakeMLPlayer:

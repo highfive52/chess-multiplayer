@@ -38,15 +38,21 @@ def get_inference_provider() -> str:
     return provider
 
 
-def get_model_path() -> Path:
-    """Return the local policy model path."""
+def get_model_onnx_path() -> Path:
+    """Return the local ONNX policy model path."""
 
-    value = os.environ.get("ML_MODEL_PATH")
+    value = os.environ.get("ML_MODEL_ONNX_PATH") or os.environ.get("ML_MODEL_PATH")
 
     if not value:
-        raise RuntimeError("ML_MODEL_PATH is not set")
+        raise RuntimeError("ML_MODEL_ONNX_PATH is not set")
 
     return _resolve_repo_path(value)
+
+
+def get_model_path() -> Path:
+    """Backward-compatible alias for the local policy ONNX path."""
+
+    return get_model_onnx_path()
 
 
 def get_model_metadata_path() -> Path:

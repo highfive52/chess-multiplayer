@@ -10,13 +10,14 @@ requires-python = ">=3.12"
 
 dependencies = [
     "chess-core",
-    "chess-ml",
     "fastapi>=0.136.3",
+    "numpy>=1.26.0",
     "psycopg[binary]>=3.3.5",
     "python-chess>=1.999",
     "python-dotenv>=1.2.3",
     "python-multipart>=0.0.32",
     "python-socketio>=5.16.2",
+    "onnxruntime>=1.20.0",
     "redis>=8.0.0",
     "uvicorn>=0.48.0",
 ]

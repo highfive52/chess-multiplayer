@@ -6,11 +6,17 @@ import json
 from pathlib import Path
 
 import pytest
-from chess_ml.artifacts import (
+import torch
+from model_artifacts import (
     ModelArtifactMetadata,
+    build_model_artifact_paths,
+    export_onnx_model,
     load_model_metadata,
+    load_safetensors_checkpoint,
+    save_safetensors_checkpoint,
     validate_model_metadata,
 )
+from torch import nn
 
 
 def test_policy_v1_metadata_is_compatible() -> None:
@@ -55,3 +61,60 @@ def test_missing_required_metadata_is_rejected(
 
     with pytest.raises(KeyError):
         load_model_metadata(metadata_path)
+
+
+def test_model_artifact_paths_are_repo_root_relative() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+
+    artifact_paths = build_model_artifact_paths(repo_root)
+
+    assert (
+        artifact_paths.checkpoint_path
+        == repo_root / "artifacts" / "policy_v1.safetensors"
+    )
+    assert artifact_paths.onnx_path == repo_root / "artifacts" / "policy_v1.onnx"
+    assert artifact_paths.metadata_path == repo_root / "artifacts" / "policy_v1.json"
+
+
+def test_safetensors_checkpoint_round_trip(tmp_path: Path) -> None:
+    class TinyModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.linear = nn.Linear(2, 2)
+
+    model = TinyModel()
+    for parameter in model.parameters():
+        parameter.data.fill_(1.5)
+
+    checkpoint_path = tmp_path / "policy_v1.safetensors"
+    save_safetensors_checkpoint(model, checkpoint_path)
+
+    restored = TinyModel()
+    for parameter in restored.parameters():
+        parameter.data.zero_()
+
+    load_safetensors_checkpoint(restored, checkpoint_path)
+
+    for original, loaded in zip(
+        model.state_dict().values(),
+        restored.state_dict().values(),
+    ):
+        assert torch.allclose(original, loaded)
+
+
+def test_onnx_export_writes_file(tmp_path: Path) -> None:
+    class TinyModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.linear = nn.Linear(18 * 8 * 8, 2)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.linear(x.flatten(start_dim=1))
+
+    model = TinyModel()
+    onnx_path = tmp_path / "policy_v1.onnx"
+
+    export_onnx_model(model, onnx_path)
+
+    assert onnx_path.exists()
+    assert onnx_path.stat().st_size > 0

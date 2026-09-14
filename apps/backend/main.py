@@ -665,7 +665,8 @@ async def handle_propose_move(sid, data):
     print(
         f"[BOT] Room [{room_code}] preflight status={game_state.get('status')} "
         f"current_turn={game_state.get('current_turn')} bot_color={bot_color} "
-        f"ml_player_ready={has_ml_player}"
+        f"ml_player_ready={has_ml_player}",
+        flush=True,
     )
     if (
         game_state.get("status") == "active"
@@ -673,15 +674,19 @@ async def handle_propose_move(sid, data):
         and game_state.get("current_turn") == bot_color
         and has_ml_player
     ):
-        print(f"[BOT] Room [{room_code}] turn={bot_color} generating move")
+        print(f"[BOT] Room [{room_code}] turn={bot_color} generating move", flush=True)
         try:
             bot_move = generate_bot_move(game_state, app.state.ml_player)
             print(
                 f"[BOT] Room [{room_code}] predicted from=({bot_move.from_row},{bot_move.from_col}) "
-                f"to=({bot_move.to_row},{bot_move.to_col}) promotion={bot_move.promotion}"
+                f"to=({bot_move.to_row},{bot_move.to_col}) promotion={bot_move.promotion}",
+                flush=True,
             )
         except (RuntimeError, ValueError, TypeError, KeyError, OSError) as e:
-            print(f"[BOT WARN] failed to generate move for Room [{room_code}]: {e}")
+            print(
+                f"[BOT WARN] failed to generate move for Room [{room_code}]: {e}",
+                flush=True,
+            )
             return
 
         bot_result = execute_move(
@@ -694,7 +699,10 @@ async def handle_propose_move(sid, data):
         )
 
         if not bot_result.accepted:
-            print(f"[BOT REJECTED] Room [{room_code}] reason={bot_result.reason}")
+            print(
+                f"[BOT REJECTED] Room [{room_code}] reason={bot_result.reason}",
+                flush=True,
+            )
 
             await sio.emit(
                 "bot_move_rejected",
@@ -716,7 +724,8 @@ async def handle_propose_move(sid, data):
 
         print(
             f"[BOT ACCEPTED] Room [{room_code}] from=({bot_move.from_row},{bot_move.from_col}) "
-            f"to=({bot_move.to_row},{bot_move.to_col})"
+            f"to=({bot_move.to_row},{bot_move.to_col})",
+            flush=True,
         )
 
         game_state = bot_result.game_state

@@ -2,8 +2,8 @@
 
 import pytest
 import torch
-from chess_ml.model import PolicyCNN
-from chess_ml.moves import MOVE_CLASS_COUNT
+from model import PolicyCNN
+from moves import MOVE_CLASS_COUNT
 from torch import nn
 
 

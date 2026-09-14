@@ -60,10 +60,7 @@ def iter_training_examples(
 
     board = game.board()
 
-    for ply, move in enumerate(
-        game.mainline_moves(),
-        start=1,
-    ):
+    for ply, move in enumerate(game.mainline_moves(), start=1):
         yield TrainingExample(
             board=board.copy(stack=False),
             move=move,
@@ -126,7 +123,7 @@ def split_game_records(
     *,
     validation_fraction: float = 0.2,
     seed: int = 42,
-):
+) -> tuple[Sequence[Mapping[str, Any]], Sequence[Mapping[str, Any]]]:
     """Split game records into training and validation sets."""
 
     if not 0.0 < validation_fraction < 1.0:
@@ -136,10 +133,7 @@ def split_game_records(
 
     training_records, validation_records = random_split(
         game_records,
-        [
-            1.0 - validation_fraction,
-            validation_fraction,
-        ],
+        [1.0 - validation_fraction, validation_fraction],
         generator=generator,
     )
 

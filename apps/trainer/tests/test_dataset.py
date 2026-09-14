@@ -5,13 +5,13 @@ from itertools import pairwise
 import chess
 import pytest
 import torch
-from chess_ml.dataset import (
+from dataset import (
     ChessPolicyDataset,
     build_training_examples,
     iter_training_examples,
     split_game_records,
 )
-from chess_ml.moves import encode_move
+from moves import encode_move
 from torch.utils.data import DataLoader
 
 
