@@ -8,29 +8,29 @@ repos:
         entry: uv run --package backend ruff check . --fix
         language: system
         pass_filenames: false
-        files: ^backend/
+        files: ^apps/backend/
 
       - id: ruff-format
         name: Ruff format
         entry: uv run --package backend ruff format .
         language: system
         pass_filenames: false
-        files: ^backend/
+        files: ^apps/backend/
 
       - id: pytest-backend
         name: Backend tests
-        entry: uv run --group local-inference pytest -q backend/tests
+        entry: uv run --package backend pytest -q apps/backend/tests
         language: system
         pass_filenames: false
-        files: ^backend/
+        files: ^apps/backend/
 
       # --- PYTHON ML ---
       - id: pytest-ml
         name: ML tests
-        entry: uv run --group local-inference pytest -q ml/tests
+        entry: uv run --package chess-ml pytest -q apps/trainer/tests packages/chess_core/tests
         language: system
         pass_filenames: false
-        files: ^ml/
+        files: ^(apps/trainer/|packages/chess_core/)
 
       # --- TYPESCRIPT FRONTEND ---
       - id: prettier

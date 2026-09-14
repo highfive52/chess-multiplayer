@@ -1,2 +1,2 @@
-backend: uv run --group local-inference uvicorn backend.main:asgi_app --app-dir backend/src --reload --host 0.0.0.0 --port 8000
+backend: uv run --package backend uvicorn main:asgi_app --host 0.0.0.0 --port 8000 --reload
 frontend: npm --prefix frontend run dev

@@ -67,9 +67,9 @@ A Vite + TypeScript single-page application responsible for:
 
 Frontend dependencies and development commands are managed through `frontend/package.json` and `frontend/package-lock.json`.
 
-### `backend/`
+### `apps/backend/`
 
-A Python FastAPI and Socket.IO service located under `backend/src/backend`.
+A Python FastAPI and Socket.IO service located under `apps/backend`.
 
 The backend is responsible for:
 
@@ -85,11 +85,11 @@ The backend is responsible for:
 Python dependencies and development tools are managed through:
 
 ```text
-backend/pyproject.toml
-backend/uv.lock
+apps/backend/pyproject.toml
+uv.lock
 ```
 
-`backend/requirements.txt` is generated from the `uv` dependency definition for deployment environments that consume a requirements file.
+`apps/backend/requirements.txt` is generated from the `uv` dependency definition for deployment environments that consume a requirements file.
 
 ### `docs/`
 
@@ -151,12 +151,10 @@ git clone https://github.com/highfive52/chess-multiplayer.git
 cd chess-multiplayer
 ```
 
-Install the backend dependencies:
+Install the workspace dependencies:
 
 ```bash
-cd backend
-uv sync
-cd ..
+uv sync --group local-inference --group training
 ```
 
 Install the frontend dependencies:
@@ -225,12 +223,23 @@ make start-backend
 Equivalent to running:
 
 ```bash
-cd backend
-uv run uvicorn backend.main:asgi_app \
-  --app-dir src \
-  --reload \
-  --host 0.0.0.0 \
-  --port 8000
+uv run --package backend backend
+```
+
+### Trainer
+
+The trainer package lives in `apps/trainer/`.
+
+Run the ML test suite from the package directory with `uv`:
+
+```bash
+uv run --package chess-ml pytest apps/trainer/tests
+```
+
+For shared chess-core coverage that exercises the extracted package, run:
+
+```bash
+uv run --package chess-ml pytest apps/trainer/tests packages/chess_core/tests
 ```
 
 ### Frontend
@@ -268,11 +277,15 @@ make test
 Backend commands can also be executed directly through `uv`:
 
 ```bash
-cd backend
+uv run --package backend pytest apps/backend/tests
+uv run --package backend ruff check apps/backend
+uv run --package backend ruff format apps/backend
+```
 
-uv run pytest
-uv run ruff check .
-uv run ruff format .
+Trainer commands can be executed directly through `uv`:
+
+```bash
+uv run --package chess-ml pytest apps/trainer/tests
 ```
 
 Frontend commands are defined in `frontend/package.json`:
@@ -314,10 +327,12 @@ The pre-commit configuration invokes the project's existing development environm
 ```text
 pre-commit
 ├── uv
-│   └── backend/pyproject.toml + uv.lock
+│   ├── apps/backend/pyproject.toml
+│   ├── apps/trainer/pyproject.toml
+│   └── packages/chess_core/pyproject.toml + uv.lock
 │
 └── npm
-    └── frontend/package.json + package-lock.json
+   └── frontend/package.json + package-lock.json
 ```
 
 ## Backend Dependency Management
@@ -327,25 +342,24 @@ pre-commit
 The primary files are:
 
 ```text
-backend/pyproject.toml
-backend/uv.lock
+apps/backend/pyproject.toml
+uv.lock
 ```
 
 Synchronize the local environment with:
 
 ```bash
-cd backend
-uv sync
+uv sync --group local-inference --group training
 ```
 
 The deployment `requirements.txt` can be generated from the `uv` environment with:
 
 ```bash
-cd backend
 uv export \
-  --format requirements-txt \
-  --no-emit-project \
-  --output-file requirements.txt
+   --package backend \
+   --format requirements-txt \
+   --no-emit-project \
+   --output-file apps/backend/requirements.txt
 ```
 
 This keeps dependency ownership in `pyproject.toml` and `uv.lock` while still supporting deployment platforms that expect a `requirements.txt` file.

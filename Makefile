@@ -38,10 +38,10 @@ export
 # Dependency management
 
 requirements:
-	uv export --package backend --format requirements-txt --no-emit-project --output-file backend/requirements.txt
+	uv export --package backend --format requirements-txt --no-emit-project --output-file apps/backend/requirements.txt
 
 install-python:
-	uv sync --group local-inference
+	uv sync --group local-inference --group training
 
 install-frontend:
 	npm --prefix frontend ci
@@ -52,10 +52,10 @@ install: install-python install-frontend
 # Tests
 
 test-backend:
-	uv run --group local-inference pytest backend/tests
+	uv run --package backend pytest apps/backend/tests
 
 test-ml:
-	uv run --group local-inference pytest ml/tests
+	uv run --package chess-ml pytest apps/trainer/tests packages/chess_core/tests
 
 test: test-backend test-ml
 
@@ -63,7 +63,7 @@ test: test-backend test-ml
 # Development servers
 
 start-backend:
-	uv run --group local-inference uvicorn backend.main:asgi_app --app-dir backend/src --reload --host 0.0.0.0 --port 8000
+	uv run --package backend backend
 
 start-frontend:
 	npm --prefix frontend run dev
@@ -93,18 +93,18 @@ postgres-logs:
 	docker compose logs -f postgres
 
 migrate:
-	uv run --package backend alembic -c backend/alembic.ini upgrade head
+	uv run --package backend alembic -c apps/backend/alembic.ini upgrade head
 
 #-----------------------------
 # Integration tests
 
 integration:
 	docker compose up -d postgres redis
-	uv run --group local-inference pytest -q backend/tests -k integration
+	uv run --package backend pytest -q apps/backend/tests -k integration
 
 integration-docker:
 	docker compose up -d postgres redis
-	docker run --rm -v $(PWD)/backend:/app -w /app python:3.11-slim bash -c "pip install --no-cache-dir \"psycopg[binary]\" alembic python-chess pytest && pytest -q tests/test_integration_db.py"
+	docker run --rm -v $(PWD)/apps/backend:/app -w /app python:3.11-slim bash -c "pip install --no-cache-dir \"psycopg[binary]\" alembic python-chess pytest && pytest -q tests/test_integration_db.py"
 
 #-----------------------------
 # Kill development processes

@@ -1,0 +1,22 @@
+[project]
+name = "chess-core"
+version = "0.1.0"
+description = "Shared chess board encoding and move utilities."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "python-chess>=1.999",
+    "torch>=2.14.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["encoding", "moves"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

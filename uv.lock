@@ -13,6 +13,7 @@ resolution-markers = [
 [manifest]
 members = [
     "backend",
+    "chess-core",
     "chess-ml",
 ]
 
@@ -228,8 +229,9 @@ wheels = [
 [[package]]
 name = "backend"
 version = "0.1.0"
-source = { editable = "backend" }
+source = { editable = "apps/backend" }
 dependencies = [
+    { name = "chess-core" },
     { name = "chess-ml" },
     { name = "fastapi" },
     { name = "psycopg", extra = ["binary"] },
@@ -251,7 +253,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "chess-ml", editable = "ml" },
+    { name = "chess-core", editable = "packages/chess_core" },
+    { name = "chess-ml", editable = "apps/trainer" },
     { name = "fastapi", specifier = ">=0.136.3" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.5" },
     { name = "python-chess", specifier = ">=1.999" },
@@ -511,10 +514,34 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/93/09/7d04d7581ae3bb8b598017941781bceb7959dd1b13e3ebf7b6a2cd843bc9/chess-1.11.2.tar.gz", hash = "sha256:a8b43e5678fdb3000695bdaa573117ad683761e5ca38e591c4826eba6d25bb39", size = 6131385, upload-time = "2025-02-25T19:10:27.328Z" }
 
 [[package]]
+name = "chess-core"
+version = "0.1.0"
+source = { editable = "packages/chess_core" }
+dependencies = [
+    { name = "python-chess" },
+    { name = "torch" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "python-chess", specifier = ">=1.999" },
+    { name = "torch", specifier = ">=2.14.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+
+[[package]]
 name = "chess-ml"
 version = "0.1.0"
-source = { editable = "ml" }
+source = { editable = "apps/trainer" }
 dependencies = [
+    { name = "chess-core" },
     { name = "httpx" },
     { name = "python-chess" },
 ]
@@ -526,6 +553,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "chess-core", editable = "packages/chess_core" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "python-chess", specifier = ">=1.999" },
 ]
