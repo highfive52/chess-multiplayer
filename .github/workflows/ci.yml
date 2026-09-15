@@ -3,9 +3,9 @@ name: Code Quality & Testing (CI)
 
 on:
   push:
-    branches: [ main, frontend, backend ]
+    branches: [main, frontend, backend]
   pull_request:
-    branches: [ main, frontend, backend ]
+    branches: [main, frontend, backend]
 
 jobs:
   lint-and-format:
@@ -16,30 +16,28 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # --- PYTHON BACKEND CHECKS ---
+      # --- PYTHON CHECKS ---
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
           version: "latest"
           enable-cache: true
 
-      - name: Install Backend Dependencies
-        run: |
-          cd backend
-          uv sync
+      - name: Install Python Dependencies
+        run: uv sync --frozen
 
       - name: Run Python Lint (Ruff)
-        run: uv run --directory backend ruff check .
+        run: uv run --package backend ruff check apps/backend
 
       - name: Run Python Format Check (Ruff)
-        run: uv run --directory backend ruff format --check .
+        run: uv run --package backend ruff format --check apps/backend
 
       # --- TYPESCRIPT FRONTEND CHECKS ---
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install Frontend Dependencies
@@ -58,7 +56,6 @@ jobs:
     needs: lint-and-format
     runs-on: ubuntu-latest
 
-    # Service container for Postgres
     services:
       postgres:
         image: postgres:16-alpine
@@ -81,22 +78,42 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
+          version: "latest"
           enable-cache: true
 
-      - name: Install Backend Dependencies
-        run: |
-          cd backend
-          uv sync
+      - name: Install Python Dependencies
+        run: uv sync --frozen
 
       - name: Run Database Migrations
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chess_test
-        run: uv run --directory backend alembic upgrade head
+        run: uv run --package backend alembic -c apps/backend/alembic.ini upgrade head
 
       - name: Run Backend Tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chess_test
-        run: uv run --directory backend pytest
+        run: uv run --package backend pytest apps/backend/tests
+  
+  test-ml:
+    name: Run ML Pytest Suite
+    needs: lint-and-format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Install Python Dependencies
+        run: uv sync --frozen
+
+      - name: Run ML Tests
+        run: uv run --package chess-ml pytest apps/trainer/tests packages/chess_core/tests
 
   test-frontend:
     name: Run Frontend Tests
@@ -111,7 +128,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install Frontend Dependencies

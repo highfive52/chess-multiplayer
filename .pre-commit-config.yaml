@@ -5,14 +5,14 @@ repos:
       # --- PYTHON BACKEND ---
       - id: ruff-check
         name: Ruff check & fix
-        entry: uv run --package backend ruff check . --fix
+        entry: uv run --package backend ruff check apps/backend --fix
         language: system
         pass_filenames: false
         files: ^apps/backend/
 
       - id: ruff-format
         name: Ruff format
-        entry: uv run --package backend ruff format .
+        entry: uv run --package backend ruff format apps/backend
         language: system
         pass_filenames: false
         files: ^apps/backend/
