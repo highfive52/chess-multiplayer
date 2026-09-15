@@ -228,6 +228,7 @@ source = { editable = "apps/backend" }
 dependencies = [
     { name = "chess-core" },
     { name = "fastapi" },
+    { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "onnxruntime" },
     { name = "psycopg", extra = ["binary"] },
@@ -251,6 +252,7 @@ dev = [
 requires-dist = [
     { name = "chess-core", editable = "packages/chess_core" },
     { name = "fastapi", specifier = ">=0.136.3" },
+    { name = "huggingface-hub", specifier = ">=1.31.0" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "onnxruntime", specifier = ">=1.20.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.5" },
