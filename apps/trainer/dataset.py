@@ -95,7 +95,10 @@ class ChessPolicyDataset(Dataset):
 
         example = self.examples[index]
 
-        x = encode_board(example.board)
+        # Encode the board as an 18x8x8 NumPy array, then convert it to
+        # a PyTorch tensor at the training boundary. Keeping board encoding
+        # framework-neutral avoids coupling the shared encoding contract to PyTorch.
+        x = torch.from_numpy(encode_board(example.board))
 
         y = torch.tensor(
             encode_move(example.move),

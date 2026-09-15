@@ -21,6 +21,7 @@ from services.game_move import (
     final_fen,
 )
 from services.ml_player import MLPlayer
+from services.model_artifacts import ensure_model_artifacts
 from services.pgn_import import import_pgn_text
 
 # 1. Configure the Redis connection string (Defaulting to Docker localhost)
@@ -42,6 +43,11 @@ sio = socketio.AsyncServer(
 async def lifespan(app: FastAPI):
     """Initialize long-lived application services."""
 
+    print("[ML] Ensuring chess policy model artifacts...")
+
+    ensure_model_artifacts()
+
+    print("[ML] Chess policy model artifacts ready.")
     print("[ML] Loading chess policy model...")
 
     app.state.ml_player = MLPlayer()

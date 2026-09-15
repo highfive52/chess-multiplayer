@@ -25,7 +25,6 @@ dependencies = [
 
 [tool.uv.sources]
 chess-core = { workspace = true }
-chess-ml = { workspace = true }
 
 
 [project.scripts]

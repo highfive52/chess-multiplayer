@@ -234,6 +234,7 @@ def export_onnx_model(
             str(path),
             export_params=True,
             opset_version=opset_version,
+            external_data=False,
             do_constant_folding=True,
             input_names=["board"],
             output_names=["logits"],
@@ -241,4 +242,47 @@ def export_onnx_model(
                 "board": {0: "batch"},
                 "logits": {0: "batch"},
             },
+        )
+
+
+def publish_model_artifacts(
+    artifact_paths: ModelArtifactPaths,
+    *,
+    repo_id: str,
+    token: str | None = None,
+) -> None:
+    """Publish model artifacts to a Hugging Face model repository."""
+
+    try:
+        from huggingface_hub import HfApi
+    except ImportError as exc:
+        raise RuntimeError(
+            "huggingface_hub is required to publish model artifacts"
+        ) from exc
+
+    paths = (
+        artifact_paths.checkpoint_path,
+        artifact_paths.onnx_path,
+        artifact_paths.metadata_path,
+    )
+
+    for path in paths:
+        if not path.exists():
+            raise FileNotFoundError(f"Model artifact does not exist: {path}")
+
+    api = HfApi(token=token)
+
+    api.create_repo(
+        repo_id=repo_id,
+        repo_type="model",
+        private=True,
+        exist_ok=True,
+    )
+
+    for path in paths:
+        api.upload_file(
+            path_or_fileobj=path,
+            path_in_repo=path.name,
+            repo_id=repo_id,
+            repo_type="model",
         )

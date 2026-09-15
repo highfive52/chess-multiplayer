@@ -1,7 +1,7 @@
 """Tests for chess board tensor encoding."""
 
 import chess
-import torch
+import numpy as np
 from encoding import encode_board
 
 
@@ -11,7 +11,7 @@ def test_starting_position_tensor_shape_and_dtype():
     tensor = encode_board(board)
 
     assert tensor.shape == (18, 8, 8)
-    assert tensor.dtype == torch.float32
+    assert tensor.dtype == np.float32
 
 
 def test_starting_position_piece_count():
@@ -240,7 +240,7 @@ def test_starting_position_side_to_move():
 
     tensor = encode_board(board)
 
-    assert torch.all(tensor[12] == 1.0)
+    assert np.all(tensor[12] == 1.0)
 
 
 def test_starting_position_castling_rights():
@@ -248,10 +248,10 @@ def test_starting_position_castling_rights():
 
     tensor = encode_board(board)
 
-    assert torch.all(tensor[13] == 1.0)
-    assert torch.all(tensor[14] == 1.0)
-    assert torch.all(tensor[15] == 1.0)
-    assert torch.all(tensor[16] == 1.0)
+    assert np.all(tensor[13] == 1.0)
+    assert np.all(tensor[14] == 1.0)
+    assert np.all(tensor[15] == 1.0)
+    assert np.all(tensor[16] == 1.0)
 
 
 def test_starting_position_has_no_en_passant_target():
@@ -291,13 +291,13 @@ def test_position_after_e4():
     )
 
     # Black is now to move.
-    assert torch.all(tensor[12] == 0.0)
+    assert np.all(tensor[12] == 0.0)
 
     # Castling rights are unchanged.
-    assert torch.all(tensor[13] == 1.0)
-    assert torch.all(tensor[14] == 1.0)
-    assert torch.all(tensor[15] == 1.0)
-    assert torch.all(tensor[16] == 1.0)
+    assert np.all(tensor[13] == 1.0)
+    assert np.all(tensor[14] == 1.0)
+    assert np.all(tensor[15] == 1.0)
+    assert np.all(tensor[16] == 1.0)
 
     # e3 is the en-passant target square.
     assert (
@@ -379,7 +379,7 @@ def test_position_after_e4_e5_nf3():
     )
 
     # Black is to move.
-    assert torch.all(tensor[12] == 0.0)
+    assert np.all(tensor[12] == 0.0)
 
     # No en-passant target remains after Nf3.
     assert tensor[17].sum().item() == 0.0
@@ -394,11 +394,11 @@ def test_white_kingside_castling_right_is_removed_after_king_move():
 
     tensor = encode_board(board)
 
-    assert torch.all(tensor[13] == 0.0)
-    assert torch.all(tensor[14] == 0.0)
+    assert np.all(tensor[13] == 0.0)
+    assert np.all(tensor[14] == 0.0)
 
-    assert torch.all(tensor[15] == 1.0)
-    assert torch.all(tensor[16] == 1.0)
+    assert np.all(tensor[15] == 1.0)
+    assert np.all(tensor[16] == 1.0)
 
 
 def test_white_kingside_castling_right_is_removed_after_rook_move():
@@ -410,11 +410,11 @@ def test_white_kingside_castling_right_is_removed_after_rook_move():
 
     tensor = encode_board(board)
 
-    assert torch.all(tensor[13] == 0.0)
-    assert torch.all(tensor[14] == 1.0)
+    assert np.all(tensor[13] == 0.0)
+    assert np.all(tensor[14] == 1.0)
 
-    assert torch.all(tensor[15] == 1.0)
-    assert torch.all(tensor[16] == 1.0)
+    assert np.all(tensor[15] == 1.0)
+    assert np.all(tensor[16] == 1.0)
 
 
 def test_en_passant_target_square_is_encoded():
@@ -540,7 +540,7 @@ def test_tensor_contains_only_binary_values():
 
     tensor = encode_board(board)
 
-    assert torch.all((tensor == 0.0) | (tensor == 1.0))
+    assert np.all((tensor == 0.0) | (tensor == 1.0))
 
 
 def test_encoding_is_deterministic():
@@ -553,7 +553,7 @@ def test_encoding_is_deterministic():
     first = encode_board(board)
     second = encode_board(board)
 
-    assert torch.equal(first, second)
+    assert np.array_equal(first, second)
 
 
 def test_encoding_does_not_mutate_board():

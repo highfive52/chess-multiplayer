@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import chess
-import torch
+import numpy as np
 
 PIECE_CHANNELS = {
     (chess.WHITE, chess.PAWN): 0,
@@ -21,7 +21,7 @@ PIECE_CHANNELS = {
 }
 
 
-def encode_board(board: chess.Board) -> torch.Tensor:
+def encode_board(board: chess.Board) -> np.ndarray:
     """Encode a chess board as an 18 x 8 x 8 float32 tensor."""
 
     # 18 × 8 × 8
@@ -30,9 +30,9 @@ def encode_board(board: chess.Board) -> torch.Tensor:
     # │   └────── ranks / rows
     # └────────── channels / feature planes
 
-    tensor = torch.zeros(
+    tensor = np.zeros(
         (18, 8, 8),
-        dtype=torch.float32,
+        dtype=np.float32,
     )
 
     # Encode each occupied chess square into its piece channel.
@@ -85,19 +85,19 @@ def encode_board(board: chess.Board) -> torch.Tensor:
     #           a b c d e f g h
 
     if board.turn == chess.WHITE:
-        tensor[12].fill_(1.0)
+        tensor[12].fill(1.0)
 
     if board.has_kingside_castling_rights(chess.WHITE):
-        tensor[13].fill_(1.0)
+        tensor[13].fill(1.0)
 
     if board.has_queenside_castling_rights(chess.WHITE):
-        tensor[14].fill_(1.0)
+        tensor[14].fill(1.0)
 
     if board.has_kingside_castling_rights(chess.BLACK):
-        tensor[15].fill_(1.0)
+        tensor[15].fill(1.0)
 
     if board.has_queenside_castling_rights(chess.BLACK):
-        tensor[16].fill_(1.0)
+        tensor[16].fill(1.0)
 
     if board.ep_square is not None:
         rank = chess.square_rank(board.ep_square)

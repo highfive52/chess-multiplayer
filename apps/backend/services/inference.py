@@ -124,11 +124,14 @@ class ONNXPolicyPredictor:
 
         board = chess.Board(fen)
 
-        board_tensor = encode_board(board).unsqueeze(0).cpu().numpy()
+        board_array = np.expand_dims(
+            encode_board(board),
+            axis=0,
+        )
 
         logits = self.session.run(
             None,
-            {"board": board_tensor},
+            {"board": board_array},
         )[0]
 
         logits_row = np.asarray(logits, dtype=np.float32)[0]

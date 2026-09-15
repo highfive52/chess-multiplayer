@@ -21,6 +21,7 @@ export
 	test-backend \
 	test-ml \
 	test \
+	model-publish \
 	infra-up \
 	infra-down \
 	infra-logs \
@@ -41,7 +42,7 @@ requirements:
 	uv export --package backend --format requirements-txt --no-emit-project --output-file apps/backend/requirements.txt
 
 install-python:
-	uv sync --group local-inference --group training
+	uv sync
 
 install-frontend:
 	npm --prefix frontend ci
@@ -58,6 +59,12 @@ test-ml:
 	uv run --package chess-ml pytest apps/trainer/tests packages/chess_core/tests
 
 test: test-backend test-ml
+
+#-----------------------------
+# Model artifacts
+
+model-publish:
+	uv run --package chess-ml python scripts/model_publish.py
 
 #-----------------------------
 # Development servers

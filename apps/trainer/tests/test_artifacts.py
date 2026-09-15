@@ -118,3 +118,4 @@ def test_onnx_export_writes_file(tmp_path: Path) -> None:
 
     assert onnx_path.exists()
     assert onnx_path.stat().st_size > 0
+    assert not onnx_path.with_suffix(".onnx.data").exists()

@@ -154,7 +154,7 @@ cd chess-multiplayer
 Install the workspace dependencies:
 
 ```bash
-uv sync --group local-inference --group training
+uv sync
 ```
 
 Install the frontend dependencies:
@@ -228,9 +228,9 @@ uv run --package backend backend
 
 ### Trainer
 
-The trainer package lives in `apps/trainer/`.
+The trainer code lives in `apps/trainer/`, and the package name is `chess-ml`.
 
-Run the ML test suite from the package directory with `uv`:
+Run the ML test suite from the repository root with `uv`:
 
 ```bash
 uv run --package chess-ml pytest apps/trainer/tests
@@ -241,6 +241,18 @@ For shared chess-core coverage that exercises the extracted package, run:
 ```bash
 uv run --package chess-ml pytest apps/trainer/tests packages/chess_core/tests
 ```
+
+To train locally and export the trainer checkpoint plus ONNX artifact into `artifacts/`, run:
+
+```bash
+uv run --package chess-ml python -m train --sample-size 100 --epochs 1 --batch-size 16
+```
+
+That writes:
+
+* `artifacts/policy_v1.safetensors`
+* `artifacts/policy_v1.onnx`
+* `artifacts/policy_v1.json`
 
 ### Frontend
 
@@ -286,6 +298,7 @@ Trainer commands can be executed directly through `uv`:
 
 ```bash
 uv run --package chess-ml pytest apps/trainer/tests
+uv run --package chess-ml python -m train --sample-size 100 --epochs 1 --batch-size 16
 ```
 
 Frontend commands are defined in `frontend/package.json`:
@@ -349,7 +362,7 @@ uv.lock
 Synchronize the local environment with:
 
 ```bash
-uv sync --group local-inference --group training
+uv sync
 ```
 
 The deployment `requirements.txt` can be generated from the `uv` environment with:
@@ -363,6 +376,18 @@ uv export \
 ```
 
 This keeps dependency ownership in `pyproject.toml` and `uv.lock` while still supporting deployment platforms that expect a `requirements.txt` file.
+
+## ML Artifacts
+
+The trainer exports its artifacts into the top-level `artifacts/` directory.
+
+The current files are:
+
+* `artifacts/policy_v1.safetensors` - canonical trainer checkpoint
+* `artifacts/policy_v1.onnx` - single-file runtime model used by the backend
+* `artifacts/policy_v1.json` - metadata describing the exported model contract
+
+The backend loads the ONNX model from the same local `artifacts/` directory during development.
 
 ## Multiplayer Game Flow
 

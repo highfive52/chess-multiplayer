@@ -162,6 +162,7 @@ def test_chess_policy_dataset_returns_encoded_sample(game_record):
     x, y = dataset[0]
 
     assert x.shape == (18, 8, 8)
+    assert isinstance(x, torch.Tensor)
     assert x.dtype == torch.float32
 
     assert y.shape == torch.Size([])
