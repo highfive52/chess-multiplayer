@@ -10,17 +10,24 @@ import torch
 from model_artifacts import (
     ModelArtifactMetadata,
     build_model_artifact_paths,
+    build_model_metadata_payload,
     export_onnx_model,
     load_model_metadata,
     load_safetensors_checkpoint,
     save_safetensors_checkpoint,
+    write_model_metadata,
     validate_model_metadata,
 )
 from torch import nn
 
 
-def test_policy_v1_metadata_is_compatible() -> None:
-    metadata_path = Path(__file__).resolve().parents[3] / "artifacts" / "policy_v1.json"
+def test_policy_v1_metadata_is_compatible(tmp_path: Path) -> None:
+    metadata_path = tmp_path / "policy_v1.json"
+
+    write_model_metadata(
+        metadata_path,
+        build_model_metadata_payload(),
+    )
 
     metadata = load_model_metadata(metadata_path)
 
@@ -63,8 +70,11 @@ def test_missing_required_metadata_is_rejected(
         load_model_metadata(metadata_path)
 
 
-def test_model_artifact_paths_are_repo_root_relative() -> None:
-    repo_root = Path(__file__).resolve().parents[3]
+def test_model_artifact_paths_are_repo_root_relative(tmp_path: Path) -> None:
+    repo_root = tmp_path
+
+    (repo_root / "pyproject.toml").write_text("[project]\nname = 'chess-ml'\n")
+    (repo_root / "artifacts").mkdir()
 
     artifact_paths = build_model_artifact_paths(repo_root)
 

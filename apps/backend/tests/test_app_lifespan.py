@@ -22,6 +22,8 @@ class FakePredictor:
 def test_app_lifespan_initializes_ml_player(
     monkeypatch,
 ):
+    monkeypatch.setattr("main.ensure_model_artifacts", lambda: None)
+
     monkeypatch.setattr("services.ml_player.ONNXPolicyPredictor", FakePredictor)
     monkeypatch.setenv(
         "ML_MODEL_ONNX_PATH",
