@@ -1,0 +1,30 @@
+flowchart LR
+  subgraph Frontend[Frontend input + rerender]
+    direction TB
+    Input[1. Human clicks or drags a piece]
+    Emit[2. socket emit propose_move]
+    Receive[11. socket on move_executed]
+    Turn[12. updateTurnHUD]
+    Sync[13. copy payload.board into board]
+    Clear[14. selectedSquare reset to null]
+    Render[15. renderBoard after move]
+  end
+
+  subgraph Live[Socket.IO live session]
+    direction TB
+    Session[3. handle_propose_move]
+    Resolve[4. sio.get_session]
+  end
+
+  subgraph Backend[Backend authoritative move pipeline]
+    direction TB
+    Load[5. load room state from Redis]
+    Parse[6. parse raw state]
+    Decide[7. execute_move]
+    Persist[8. _persist_move_update]
+    Write[9. write live state to Redis]
+    Broadcast[10. emit move_executed]
+  end
+
+  Input --> Emit --> Session --> Resolve --> Load --> Parse --> Decide --> Persist --> Write --> Broadcast --> Receive
+  Receive --> Turn --> Sync --> Clear --> Render

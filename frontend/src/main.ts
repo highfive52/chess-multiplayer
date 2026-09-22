@@ -845,11 +845,19 @@ if (boardContainer) {
     }
 
     // Determine drop target
+    // Browser viewport coordinates to determine the element under the pointer
     const dropTarget = document.elementFromPoint(
       event.clientX,
       event.clientY
     ) as HTMLElement | null;
     const targetSquare = dropTarget?.closest(".square") as HTMLElement | null;
+
+    // If the pointer is over a square, determine its row and column
+    // <div
+    //     class="square dark"
+    //     data-row="4"
+    //     data-col="4"
+    //  >
     if (targetSquare) {
       const toRow = parseInt(targetSquare.dataset.row!, 10);
       const toCol = parseInt(targetSquare.dataset.col!, 10);

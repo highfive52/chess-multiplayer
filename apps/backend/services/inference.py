@@ -10,7 +10,7 @@ import chess
 import numpy as np
 import onnxruntime as ort
 from encoding import encode_board
-from moves import MOVE_CLASS_COUNT, decode_move
+from moves import MOVE_CLASS_COUNT, decode_move, encode_move
 
 EXPECTED_MODEL_VERSION = "policy-v1"
 EXPECTED_ARCHITECTURE_VERSION = "policy-cnn-v1"
@@ -103,6 +103,10 @@ def _softmax(logits: np.ndarray) -> np.ndarray:
     return exp_logits / exp_logits.sum()
 
 
+def _legal_move_class_ids(board: chess.Board) -> list[int]:
+    return [encode_move(move) for move in board.legal_moves]
+
+
 class ONNXPolicyPredictor:
     """Load and reuse an exported ONNX chess policy model."""
 
@@ -123,6 +127,10 @@ class ONNXPolicyPredictor:
         """Predict one move from a FEN position."""
 
         board = chess.Board(fen)
+        legal_ids = _legal_move_class_ids(board)
+
+        if not legal_ids:
+            raise RuntimeError("No legal moves available for position")
 
         board_array = np.expand_dims(
             encode_board(board),
@@ -135,9 +143,11 @@ class ONNXPolicyPredictor:
         )[0]
 
         logits_row = np.asarray(logits, dtype=np.float32)[0]
-        probabilities = _softmax(logits_row)
+        legal_logits = logits_row[legal_ids]
+        probabilities = _softmax(legal_logits)
 
-        predicted_id = int(np.argmax(logits_row))
+        best_index = int(np.argmax(legal_logits))
+        predicted_id = legal_ids[best_index]
         predicted_move = decode_move(predicted_id)
 
         return MovePrediction(
@@ -148,6 +158,6 @@ class ONNXPolicyPredictor:
                 if predicted_move.promotion is not None
                 else None
             ),
-            score=float(probabilities[predicted_id]),
+            score=float(probabilities[best_index]),
             model_version=self.model_version,
         )
