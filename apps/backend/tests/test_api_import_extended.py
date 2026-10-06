@@ -142,4 +142,4 @@ def test_import_pgn_rejects_malformed_input():
     resp = client.post(
         "/games/import/pgn", json={"text": load_fixture("malformed.pgn")}
     )
-    assert resp.status_code == 500
+    assert resp.status_code == 400

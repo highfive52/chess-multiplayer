@@ -10,6 +10,7 @@ import redis.asyncio as aioredis
 import socketio
 from fastapi import Body, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from psycopg import Error as PsycopgError
 from repositories import games as games_repo
 from schemas.pgn_import import ImportResponse
 from schemas.replay import ReplayDocument
@@ -311,6 +312,10 @@ async def get_game_replay(game_id: str):
         doc = await asyncio.to_thread(replay_service.get_replay_document, game_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="game not found")
+    except PsycopgError as e:
+        tb = traceback.format_exc()
+        print("[ERROR] get_game_replay failure:\n", tb)
+        raise HTTPException(status_code=503, detail=f"database unavailable: {e}")
     return doc
 
 
@@ -319,12 +324,12 @@ async def list_games(source_type: str | None = None, limit: int = 50):
     try:
         docs = await asyncio.to_thread(games_repo.list_games, source_type, limit)
         return docs
-    except (RuntimeError, ValueError, OSError) as e:
+    except (PsycopgError, RuntimeError, ValueError, OSError) as e:
         # Log a full traceback to the server console for debugging
         tb = traceback.format_exc()
         print("[ERROR] list_games failure:\n", tb)
         # Surface the error message in the response for local dev visibility
-        raise HTTPException(status_code=500, detail=f"unable to list games: {e}")
+        raise HTTPException(status_code=503, detail=f"unable to list games: {e}")
 
 
 @app.post("/games/import/pgn", response_model=ImportResponse)
@@ -366,10 +371,14 @@ async def import_pgn(
 
     try:
         result = await asyncio.to_thread(import_pgn_text, text, source_filename)
-    except (RuntimeError, ValueError, TypeError, KeyError, OSError) as e:
+    except ValueError as e:
+        tb = traceback.format_exc()
+        print("[ERROR] import_pgn validation failure:\n", tb)
+        raise HTTPException(status_code=400, detail=f"invalid PGN input: {e}")
+    except (PsycopgError, RuntimeError, TypeError, KeyError, OSError) as e:
         tb = traceback.format_exc()
         print("[ERROR] import_pgn failure:\n", tb)
-        raise HTTPException(status_code=500, detail=f"import failed: {e}")
+        raise HTTPException(status_code=503, detail=f"import failed: {e}")
 
     return result
 

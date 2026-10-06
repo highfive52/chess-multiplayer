@@ -91,6 +91,22 @@ uv.lock
 
 `apps/backend/requirements.txt` is generated from the `uv` dependency definition for deployment environments that consume a requirements file.
 
+Database schema migrations are managed with Alembic under `apps/backend/alembic`.
+To set up a brand-new database, create the database first, point `DATABASE_URL` at it,
+and then run the migrations to the latest revision:
+
+```bash
+cd apps/backend
+DATABASE_URL="postgresql://user:password@host:5432/dbname" uv run alembic upgrade head
+```
+
+If `DATABASE_URL` is already exported in your shell, you can omit it:
+
+```bash
+cd apps/backend
+uv run alembic upgrade head
+```
+
 ### `docs/`
 
 Contains project documentation, diagrams, implementation plans, and the development runbook.
@@ -292,6 +308,7 @@ Backend commands can also be executed directly through `uv`:
 uv run --package backend pytest apps/backend/tests
 uv run --package backend ruff check apps/backend
 uv run --package backend ruff format apps/backend
+cd apps/backend && uv run alembic upgrade head
 ```
 
 Trainer commands can be executed directly through `uv`:
@@ -484,12 +501,22 @@ The Vite frontend is built and deployed to GitHub Pages using GitHub Actions.
 
 ### Backend
 
-The FastAPI/Socket.IO backend runs on Render.
+The FastAPI/Socket.IO backend runs on Render and requires a configured
+`DATABASE_URL` pointing at the PostgreSQL database that stores games and
+imports.
 
 The backend starts with Uvicorn using the ASGI application:
 
 ```text
 backend.main:asgi_app
+```
+
+Before the backend serves database-backed routes, run the Alembic migrations
+against the target database:
+
+```bash
+cd apps/backend
+DATABASE_URL="postgresql://user:password@host:5432/dbname" uv run alembic upgrade head
 ```
 
 ### Redis
